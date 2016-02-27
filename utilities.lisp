@@ -5,6 +5,9 @@
 ;;; "utilities" goes here. Hacks and glory await!
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
+  ;soon as compiliation of utilities occurs use infix math in whatever lib
+  ;invokes it
+  (infix-math:use-infix-math)
 
   (defun insert-after (lst index newelt)
     (push newelt (cdr (nthcdr index lst))) 
@@ -91,11 +94,11 @@
 			 (car x)
 			 (rec (cdr x) acc))))))
       (rec x nil)))
-
+  
   (defun ask (string)
     (princ string *query-io*)
     (read *query-io*))
-
+  
   (defun to-string (&rest args)
     (apply #'concatenate 
 	   'string 
@@ -103,12 +106,12 @@
 	      collect  (if (stringp i) 
 			   i 
 			   (write-to-string i)))))
-
+  
   (defun to-symbol (str) (intern (string-upcase str)))
 
   (defun to-keyword (name) 
     (values (intern (string-upcase name) "KEYWORD")))
-
+  
   (defun partition (source n)
     (if (zerop n) (error "zero length"))
     (labels ((rec (source acc)
@@ -120,7 +123,7 @@
 		     (nreverse
 		      (cons source acc))))))
       (if source (rec source nil) nil)))
-
+  
   (defun slots-of (obj) (gethash obj class-slots))
 
   (defun gen-slots (name slots)
@@ -136,13 +139,13 @@
 	:report "Create a new slot list"
 	:interactive (lambda () (list (ask "Value: ")))
 	(gen-slots name value))))
-
-
+  
+  
   (defmacro def-generic (name args) 
     (fmakunbound name) ;makes sure that this can be redifined!
     `(defgeneric ,name 
 	 ,(append args '(&key))))
-
+  
   (defun append-obj-slots 
       (obj-list)
     (partition (flatten (loop for (var obj) in obj-list 
@@ -282,7 +285,8 @@
   (defun grab-slots-with-accessors (slots)
     (loop for slot in slots collect (list slot slot)))
 
-  (defmacro def-class (name &key extends slots constructor super-args) 
+  (defmacro def-class
+      (name &key extends slots constructor super-args) 
     (if constructor
 	(if (eq (first constructor) 'lambda)
 	    nil
@@ -336,10 +340,11 @@
 		     ,@(if after (rest (rest (rest constructor))) (rest (rest constructor)))
 		     (when (next-method-p)
 		       ,(if super-args `(call-next-method obj ,@super-args) `(call-next-method obj))))))
-	  `(progn (defclass ,name 
-		      ,extends 
-		    ,(gen-slots name (append slots `(name ',name))))
-		  ,(if after (insert-after def-method-code 2 :after) def-method-code))))
+	  `(progn
+	     (defclass ,name 
+		       ,extends 
+	               ,(gen-slots name (append slots `(name ',name))))
+	     ,(if after (insert-after def-method-code 2 :after) def-method-code))))
 
 
 
