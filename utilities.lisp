@@ -327,7 +327,7 @@
 						     (fetch missing-deps mixin)))) 
 		    finally (return error-string)))))
 
-    (let* ((constructor-args (if after (first (rest (rest constructor))) (first (rest constructor))))) (print constructor-args)
+    (let* ((constructor-args (if after (first (rest (rest constructor))) (first (rest constructor)))))
 	  (loop for class in extends 
 	     do (loop for arg in constructor-args 
 		   do (if (in? (slots-of class) arg)
