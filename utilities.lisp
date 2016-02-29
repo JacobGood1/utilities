@@ -286,7 +286,7 @@
     (loop for slot in slots collect (list slot slot)))
 
   (defmacro def-class
-      (name &key extends slots constructor super-args) 
+      (name &key extends slots constructor super-args)
     (if constructor
 	(if (eq (first constructor) 'lambda)
 	    nil
@@ -340,11 +340,16 @@
 		     ,@(if after (rest (rest (rest constructor))) (rest (rest constructor)))
 		     (when (next-method-p)
 		       ,(if super-args `(call-next-method obj ,@super-args) `(call-next-method obj))))))
-	  `(progn
-	     (defclass ,name 
-		       ,extends 
-	               ,(gen-slots name (append slots `(name ',name))))
-	     ,(if after (insert-after def-method-code 2 :after) def-method-code))))
+	  (let ((gen-name (gensym)))
+	    `(progn
+	       (defclass ,gen-name 
+		         ,extends 
+		         ,(gen-slots name (append slots `(name ',name))))
+	       ,(if after (insert-after def-method-code 2 :after) def-method-code)
+	       (defmacro ,name
+		   (&key ,@constructor-args)
+		 ,(filter (lambda (x) (not (nil? x)))
+			 `(make-instance ',gen-name ,(flatten (loop for i in constructor-args collect (list (to-keyword i) i))))))))))
 
 
 
