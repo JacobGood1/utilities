@@ -9,6 +9,14 @@
   ;invokes it
   (infix-math:use-infix-math)
 
+  ;TODO need to make this a multimethod
+  (defun interleave (a b)
+  (flet ((nil-pad (list on-list)
+          (append list (make-list (max 0 (- (length on-list) (length list)))))))
+    (loop for x in (nil-pad a b)
+          for y in (nil-pad b a)
+          append (list x y))))
+
   (defun insert-after (lst index newelt)
     (push newelt (cdr (nthcdr index lst))) 
     lst)
@@ -144,7 +152,7 @@
   (defmacro def-generic (name args) 
     (fmakunbound name) ;makes sure that this can be redifined!
     `(defgeneric ,name 
-	 ,(append args '(&key))))
+	 ,(append args))) ; '(&key)
   
   (defun append-obj-slots 
       (obj-list)
@@ -243,17 +251,15 @@
 
   (defmacro def-method 
       (name args &rest body)
-    (if (member '&key args)
-	(setf formatted-args args)
-	(setf formatted-args (append args '(&key))))
-    (let ((args (loop for elm in formatted-args when (consp elm) collect elm)))
-      (if (not (nil? args)) 
-	  (setf unroll (list (nest-with-accessors (place-method-at-the-end-of-with-accessors (make-accessor-args args) 
-											     body))))
-	  (setf unroll body))
-      `(defmethod ,name 
-	   ,formatted-args 
-	 ,@unroll)))
+    (let ((unroll nil))
+      (let ((find-objects (loop for elm in args when (consp elm) collect elm)))
+	(if (not (nil? find-objects)) 
+	    (setf unroll (list (nest-with-accessors (place-method-at-the-end-of-with-accessors (make-accessor-args find-objects) 
+											       body))))
+	    (setf unroll body))
+	`(defmethod ,name 
+	     ,args 
+	     ,@unroll))))
 
 
 
@@ -261,16 +267,25 @@
   (defparameter class-dependencies (make-hash-table))
   (defparameter mixins (make-hash-table))
 
-  (def-generic attach (coll))
+  (def-generic attach (coll &optional key value))
 
-  (def-method attach ((coll hash-table) &key key value)
-    (setf (gethash key coll) 
-	  value))
-  (def-method attach ((coll vector) &key value) 
+  (def-method attach ((coll hash-table) &optional key value)
+    (if-not (and key value)
+	    (error "A key and a value must be supplied to the method attach")
+	    (setf (gethash key coll) 
+		  value)))
+  (def-method attach ((coll vector) &optional value key) 
     (vector-push-extend value coll))
 
-  (def-method attach ((coll cons) &key value)
-    (reverse (cons value (reverse coll))))
+  (def-method attach ((coll cons) &optional value pos)
+    (cond ((nil? value) 
+	   (error "A value must be supplied to the method attach"))
+	  ((and value pos)
+	   (push value (cdr (nthcdr pos coll)))
+	   coll)
+	  (:default
+	   (push value (cdr (nthcdr 0 coll)))
+	   coll)))
 
 
 
@@ -327,29 +342,42 @@
 						     (fetch missing-deps mixin)))) 
 		    finally (return error-string)))))
 
-    (let* ((constructor-args (if after (first (rest (rest constructor))) (first (rest constructor)))))
-	  (loop for class in extends 
-	     do (loop for arg in constructor-args 
-		   do (if (in? (slots-of class) arg)
-			  (warn (to-string "slot: " arg " belonging to class: " class " is being shadowed by constructor arg: " arg)))))
-	  (setf def-method-code 
-		`(defmethod initialize-instance 
-		     ((obj ,name) &key ,@constructor-args)
-		   (with-accessors ,(grab-slots-with-accessors (slots-of name)) 
-		       obj 
-		     ,@(if after (rest (rest (rest constructor))) (rest (rest constructor)))
-		     (when (next-method-p)
-		       ,(if super-args `(call-next-method obj ,@super-args) `(call-next-method obj))))))
-	  (let ((gen-name (gensym)))
-	    `(progn
-	       (defclass ,gen-name 
-		         ,extends 
-		         ,(gen-slots name (append slots `(name ',name))))
-	       ,(if after (insert-after def-method-code 2 :after) def-method-code)
-	       (defmacro ,name
-		   (&key ,@constructor-args)
-		 ,(filter (lambda (x) (not (nil? x)))
-			 `(make-instance ',gen-name ,(flatten (loop for i in constructor-args collect (list (to-keyword i) i))))))))))
+    (let* ((constructor-args (if after
+				 (first (rest (rest constructor)))
+				 (first (rest constructor))))
+	   (gen-name (gensym)))
+      
+      (loop for class in extends 
+	 do (loop for arg in constructor-args 
+	       do (if (in? (slots-of class) arg)
+		      (warn (to-string "slot: " arg " belonging to class: " class " is being shadowed by constructor arg: " arg)))))
+
+      (setf def-method-code 
+	    `(defmethod initialize-instance 
+		 ((obj ,gen-name) &key ,@constructor-args)
+	       (with-accessors ,(loop for (i _) in (grab-slots-with-accessors (slots-of name))
+				  collect (list (to-symbol (TO-STRING name "-" i)) i)) 
+		   obj 
+		 ,@(if after (rest (rest (rest constructor))) (rest (rest constructor)))
+		 (when (next-method-p)
+		   ,(if super-args `(call-next-method obj ,@super-args) `(call-next-method obj))))))
+      
+      `(progn
+	 (defclass ,gen-name 
+	     ,extends 
+	     ,(gen-slots name (append slots `(name ',name))))
+	 ,(if after (insert-after def-method-code 2 :after) def-method-code)
+	 (defmacro ,name
+	     (&key ,@constructor-args)
+	   `(make-instance ',',gen-name
+			   ,@(flatten
+			     (loop
+				for (arg value) in (partition
+					  (interleave ',constructor-args
+						      (list ,@constructor-args))
+					  2)
+				when (not (nil? value)) 
+				collect (list (to-keyword arg) value))))))))
 
 
 
@@ -409,10 +437,10 @@
 
 
 
-  (def-generic fetch (coll item-to-fetch))
+  ;(def-generic fetch (coll item-to-fetch))
 
-  (def-method fetch ((coll hash-table) key)
-    (gethash key coll))
+;  (def-method fetch ((coll hash-table) k)
+ ;   (gethash k coll))
 
   (defmacro -=
       (var value)
