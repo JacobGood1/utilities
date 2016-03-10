@@ -1,15 +1,10 @@
 ;;;; package.lisp
 
+;; utilities exports everything from its own file
 (defpackage #:utilities
-  (:use #:cl)
-  (:export :partition
-           :attach
-           :def-class
-           :def-method
-           :slots-of
-	   :set!
-	   :nil?
-	   :make))
+  (:use #:cl :esrap))
+
+
 
 
 

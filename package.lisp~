@@ -8,7 +8,8 @@
            :def-method
            :slots-of
 	   :set!
-	   :nil?))
+	   :nil?
+	   :make))
 
 
 

@@ -1,0 +1,19 @@
+(in-package #:utilities)
+
+ (infix-math:use-infix-math)
+
+  (defparameter class-slots (make-hash-table))
+  (defparameter mixin-dependencies (make-hash-table))
+  (defparameter mixins (make-hash-table))
+
+  ;TODO need to make this a multimethod
+  (defun interleave (a b)
+  (flet ((nil-pad (list on-list)
+          (append list (make-list (max 0 (- (length on-list) (length list)))))))
+    (loop for x in (nil-pad a b)
+          for y in (nil-pad b a)
+          append (list x y))))
+
+  (defun insert-after (lst index newelt)
+    (push newelt (cdr (nthcdr index lst))) 
+    lst)

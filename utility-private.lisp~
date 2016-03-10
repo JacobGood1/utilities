@@ -1,0 +1,110 @@
+(in-package :utility-private)
+
+(defparameter *class-slots* (make-hash-table))
+(defparameter *mixin-dependencies* (make-hash-table))
+(defparameter *mixins* (make-hash-table))
+
+(defun gen-slots (slots)
+  (restart-case 
+      (if (not (evenp (length slots)))
+	  (error "Not all slots have been assigned a value!")
+	  (loop for (a b) in (partition slots 2)
+	     collect `(,a
+		       :initarg  ,(to-keyword a) 
+		       :initform ,b 
+		       :accessor ,a)))
+    (use-value (value)
+      :report "Create a new slot list"
+      :interactive (lambda () (list (ask "Value: ")))
+      (gen-slots value))))
+
+(defun append-obj-slots 
+      (obj-list)
+  (partition
+   (flatten (loop for (var obj) in obj-list 
+	       collect (if (eq obj nil) 
+			   nil 
+			   (loop for slot in (slots-of obj) 
+			      collect (list (to-symbol (to-string var "-" slot)) 
+					    slot))))) 
+   2))
+
+(defun create-with-accessor-for-obj 
+      (obj) 
+    `(with-accessors ,(loop for slot in (slots-of obj) 
+			 collect (list (to-symbol (to-string obj "-" slot)) 
+				       slot)) 
+	 ,obj))
+
+  (defun create-with-accessor-for-overrides-and-setters 
+      (obj) 
+    `(with-accessors ,(loop for slot in (slots-of obj) 
+			 collect (list slot 
+				       slot)) 
+	 ,obj))
+
+(defun make-accessor-args
+      (obj-list)
+    "takes an argument list that would normally
+   go to the defmethod function...
+   '((point1 one) (point2 two))
+   it then obtains the slots of the objects that defmethod dispatches on
+   assuming one and two are points...
+   ((x y) (x y))
+   it then takes these slots and matches them with their object like so...
+   ((WITH-ACCESSORS ((POINT1-X X) (POINT1-Y Y)) ONE)
+    (WITH-ACCESSORS ((POINT2-X X) (POINT2-Y Y)) TWO) NIL)"
+    (loop for (var obj) in obj-list 
+       collect (cond ((eq obj nil)
+		      nil)
+		     ((gethash obj *mixins*)
+		      `(with-accessors
+			     ,(loop for slot in (gethash obj mixin-dependencies) 
+				 collect (list (to-symbol (to-string var "-" slot)) 
+					       slot)) 
+			     ,var))
+		     (:default
+		      `(with-accessors ,(loop for slot in (slots-of obj) 
+					   collect (list (to-symbol (to-string var "-" slot)) 
+							 slot)) 
+			   ,var)))))
+
+(defun place-method-at-the-end-of-with-accessors
+      (with-accessor-list body)
+    (let* ((code  (filter (lambda (x) (not (eq x nil))) 
+			  with-accessor-list))
+	   (last-code (loop with last-code = (first (last code))
+			 for code in body 
+			 do (setf last-code (append last-code (list code))) 
+			 finally (return last-code)))
+	   (code (append (butlast code) 
+			 (list last-code)))) 
+      code))
+
+  (defun nest-with-accessors 
+      (with-accessor-list)
+    "takes a list such as the one above ^ ...
+  ((WITH-ACCESSORS ((POINT1-X X) (POINT1-Y Y)) ONE)
+    (WITH-ACCESSORS ((POINT2-X X) (POINT2-Y Y)) TWO) NIL)
+  and nests the with-accessors together like so...
+  (WITH-ACCESSORS ((POINT1-X X) (POINT1-Y Y))
+                ONE
+                (WITH-ACCESSORS ((POINT2-X X) (POINT2-Y Y)) TWO (NIL)))
+  the nil at the end does not matter..." 
+    (if (not (= (length with-accessor-list) 1)) 
+	(append (first with-accessor-list) 
+		(list (nest-with-accessors (rest with-accessor-list))))
+	(first with-accessor-list)))
+
+
+
+(defun combine-slots (classes)
+    (remove-duplicates 
+     (flatten 
+      (loop for class in classes collect (slots-of class)))))
+
+  (defun grab-slots (slots)
+    (loop for (a b) in (partition slots 2) collect a))
+
+  (defun grab-slots-with-accessors (slots)
+    (loop for slot in slots collect (list slot slot)))
