@@ -6,6 +6,11 @@
 
 
  
+(defmacro var 
+      (&rest vars) 
+    (cons 'progn 
+	  (loop for v in (partition vars 2)  
+	     collect `(defparameter ,@v))))
 
   (defmacro set! 
       (&rest vars) 
@@ -27,224 +32,173 @@
     (fmakunbound name) ;makes sure that this can be redifined!
     `(defgeneric ,name 
 	 ,(append args))) ; '(&key)
-  
-  
 
 
-					;
-					;(loop with x = 1 
-					;      with new-list = (first test) 
-					;      while (< x (length test)) 
-					;            do (progn 
-					;                 (setf new-list (append new-list (list (nth x test))))  
-					;                 (setf x (1+ x)) 
-					;      finally (return new-list))) 
+;;TODO cleanup overrides when you get better at lisp, there is too much redundant code
+;;TODO should renaming be possible?
+(defmacro override-getter 
+    (obj method-name code &key re-name)
+  (if re-name
+      (progn
+	(fmakunbound method-name)
+	`(defmethod ,re-name 
+	     (,(list obj obj)) 
+	   ,(reverse (cons code 
+			   (reverse (create-with-accessor-for-overrides-and-setters obj))))))
+      `(defmethod ,method-name 
+	   (,(list obj obj)) 
+	 ,(reverse (cons code 
+			 (reverse (create-with-accessor-for-overrides-and-setters obj)))))))
 
-  
-
-  (defmacro override-getter 
-      (name obj code)
-    `(defmethod ,name 
-	 (,(list obj obj)) 
-       ,(reverse (cons code 
-		       (reverse (create-with-accessor-for-overrides-and-setters obj))))))
-  (defmacro override-setter 
-      (name obj value code)
-    `(defmethod (setf ,name) 
-	 (,value ,(list obj obj)) 
-       ,(reverse (cons code 
-		       (reverse (create-with-accessor-for-overrides-and-setters obj))))))
+;;available words: value
+(defmacro override-setter 
+    (obj method-name code &key re-name)
+  (if re-name
+      (progn
+	(fmakunbound method-name)
+	`(defmethod (setf ,re-name) 
+	     (value ,(list obj obj)) 
+	   ,(reverse (cons code 
+			   (reverse (create-with-accessor-for-overrides-and-setters obj))))))
+      `(defmethod (setf ,method-name) 
+	   (value ,(list obj obj)) 
+	 ,(reverse (cons code 
+			 (reverse (create-with-accessor-for-overrides-and-setters obj)))))))
 
    
-(defmacro def-method ;;TODO make these work differently with mixins, need to extract data deps for with accessors and possible constructor will need luv
-      (name args &rest body)
-    (let ((unroll nil)
-	  (find-objects (loop for elm in args when (consp elm) collect elm)))
-      (if (not (nil? find-objects)) 
-	  (setf unroll (list (nest-with-accessors (place-method-at-the-end-of-with-accessors (make-accessor-args find-objects) 
-											       body))))
-	  (setf unroll body))
-      `(defmethod ,name 
-	         ,args 
-	         ,@unroll)))
+(defmacro def-method 
+    (name args &rest body)
+  (let* ((unroll nil)
+	 (objects (loop for elm in args
+		     when (consp elm)
+		     collect (progn
+			       (finalize-class (second elm))
+			       elm))))
+    
+   (if (not (nil? objects)) 
+       (setf unroll (generate-with-accessors objects 
+					     body))
+       (setf unroll body))
+   
+   (if (eq (first unroll) 'with-accessors)
+       (setf unroll (list unroll)))
+       
+    `(defmethod ,name 
+	 ,args 
+       ,@unroll)))
 
+(def-generic fetch (coll item-to-fetch))
+
+;  (def-method fetch ((coll hash-table) k)
+;    (gethash k coll))
+
+ ;;;!!! code for dependency initialization, conform it to the new system!
+
+;(let ((missing-deps (make-hash-table))
+;      (mixins-that-need-deps '()))
+;  
+;  (loop for mixin in extends 
+;     when (gethash mixin *mixins*)
+;     do (loop for dep in (fetch *mixin-dependencies* mixin)
+;	   do (if-not (in? (slots-of name) dep) 
+;		      (if (gethash mixin missing-deps)
+;			  (setf (gethash mixin missing-deps) (remove-duplicates (cons dep (gethash mixin missing-deps))))
+;			  (progn
+;			    (setf mixins-that-need-deps (cons mixin mixins-that-need-deps)) 
+;			    (setf (gethash mixin missing-deps) (cons dep '())))))))
+; 
+;  (if mixins-that-need-deps
+;      (error (loop with error-string = "" 
+;		for mixin in mixins-that-need-deps 
+;		do (setf error-string 
+;			 (concatenate 'string 
+;				      error-string 
+;				      (to-string "~%" 
+;						 "mixin: " 
+;						 mixin 
+;						 " depends on "
+;						 (fetch missing-deps mixin)
+;						 " which is absent from: "
+;						 name))) 
+;		finally (return error-string)))))
+
+;;temporarily creating a new implimentation
 (defmacro def-class
-    (name &key extends slots constructor super-args)
-  
+    (name &key extends slots constructor super-args dependencies)
+
+  (eval `(defclass ,name ,extends ,(loop for (slot value) in (partition slots 2) collect slot)))
+
+  (closer-mop:finalize-inheritance (find-class name))
+
+  (if (and (nil? slots)
+	   (nil? extends))
+      (warn (to-string name " has no slots...")))
+
+  (if constructor
+      (if (eq (first constructor) 'lambda)
+	  nil
+	  (error "constructor must be a lambda expression")))
+
+  (if dependencies
+      (setf (gethash name *class-dependencies*) dependencies))
+
   (setf extends (append extends '(printer-base)))
-  
-  (let ((def-method-code nil))
-    (if constructor
-	(if (eq (first constructor) 'lambda)
-	    nil
-	    (error "constructor must be a lambda expression")))
+
+  (let* ((slots-and-values slots)
+	 (slots (slots-of name))
+	 (def-method-code nil)
+	 (constructor-args (first (rest constructor)))
+	 (constructor-requirements constructor-args)
+	 (constructor-body (cddr constructor)))
     
-    (if slots
-	(attach class-slots 
-		name 
-		(remove-duplicates (append (combine-slots extends) 
-					   (grab-slots slots)))))
+    (loop for arg in constructor-args
+       do (loop for slot in slots
+	     when (eq slot arg)
+	     do (error (format nil "The slot: ~A and constructor arguement: ~A should not have the same symbol!" slot arg))))
+
+    (setf def-method-code (if constructor
+			      `(defmethod initialize-instance
+				   :after
+				 ((obj ,name) &key ,@constructor-args)
+				 (with-accessors ,(loop for i in slots
+						     collect (list i i)) 
+				     obj 
+				   ,@constructor-body
+				   (when (next-method-p)
+				     ,(if super-args `(call-next-method obj ,@super-args) `(call-next-method obj)))))))
     
-					;check for mixin dependency problems
-    (let ((missing-deps (make-hash-table))
-	  (mixins-that-need-deps '()))
-      
-      (loop for mixin in extends 
-	 when (gethash mixin *mixins*)
-	 do (loop for dep in (fetch mixin-dependencies mixin)
-	       do (if-not (in? (slots-of name) dep) 
-			  (if (gethash mixin missing-deps)
-			      (setf (gethash mixin missing-deps) (remove-duplicates (cons dep (gethash mixin missing-deps))))
-			      (progn
-				(setf mixins-that-need-deps (cons mixin mixins-that-need-deps)) 
-				(setf (gethash mixin missing-deps) (cons dep '())))))))
-      
-      (if mixins-that-need-deps
-	  (error (loop with error-string = "" 
-		    for mixin in mixins-that-need-deps 
-		    do (setf error-string 
-			     (concatenate 'string 
-					    error-string 
-					    (to-string "~%" 
-						       "mixin: " 
-						       mixin 
-						       " depends on "
-						       (fetch missing-deps mixin)
-						       " which is absent from: "
-						       name))) 
-		    finally (return error-string)))))
-    
-    (let* ((constructor-args (first (rest constructor)))
-	   (constructor-requirements constructor-args))
-      
-      (loop for arg in constructor-args
-	 do (loop for slot in slots
-		when (eq slot arg)
-	       do (error (format nil "The slot: ~A and constructor arguement: ~A should not have the same symbol!" slot arg))))
-      
-      
-      
-      (loop for class in extends 
-	 do (loop for arg in constructor-args 
-		 do (if (in? (slots-of class) arg)
-			(warn (to-string "slot: " arg " belonging to class: " class " is being shadowed by constructor arg: " arg)))))
-      
-      (setf def-method-code 
-	    `(defmethod initialize-instance
-		 :after
-	       ((obj ,name) &key ,@constructor-args)
-	       (with-accessors ,(loop for (i _) in (grab-slots-with-accessors (slots-of name))
-				   collect (list i i)) 
-		   obj 
-		 ,@(cddr constructor)
-		 (when (next-method-p)
-		   ,(if super-args `(call-next-method obj ,@super-args) `(call-next-method obj))))))
+    `(progn
+					
+       (defclass ,name 
+	   ,extends 
+	 ,(append (gen-slots slots-and-values) `((name :initform ',name :reader name :allocation :class))))
+       
+       ,def-method-code
+       
+       ',(setf constructor-args (append constructor-args slots))
 
-      `(progn
+       (defmacro ,name
+	   (&key ,@constructor-args)
 	 
-	 (defclass ,name 
-	     ,extends 
-	   ,(append (gen-slots slots) `((name :initform ',name :reader name :allocation :class))))
+	 (if ',dependencies
+	     (error "This class has dependencies, it cannot be instantiated directly"))
 	 
-	 ,def-method-code
-	 
-	 ',(setf constructor-args (append constructor-args (slots-of name)))
-	 
-	 (defmacro ,name
-	       (&key ,@constructor-args)
-	   
-	   (if (fetch *mixins* ',name)
-	       (error "This class is a mixin, they cannot be instantiated directly"))
-	   
-	     (if ',constructor-requirements
-		 (if-not (and ,@constructor-requirements)
-			 (error (format nil "Please provide the following arguements for the constructor: ~A"
-					(loop for arg in ',constructor-requirements
-					   collect (loop for a in ',constructor-args
-						      when (eq a arg)
-						      return arg))))))
-	     `(make-instance ',',name
-			     ,@(flatten
-				(loop
-				   for (arg value) in (partition
-						       (interleave ',constructor-args
-								   (list ,@constructor-args))
-						       2)
-				   when (not (nil? value)) 
-				   collect (list (to-keyword arg) value)))))))))
-
-
-
-
-
-(defmacro def-mixin 
-    (name &key extends slots constructor dependencies super-args)
-  
-  (let ((data-deps '()))
-    
-    (loop for dep in dependencies
-       do (handler-case (progn (find-class dep)
-				 (setf data-deps (append data-deps (slots-of dep))))
-	      (simple-error () (setf data-deps (append data-deps `(,dep))))))
-      
-      (attach *mixins* 
-	      name
-	      name)
-      
-      (if dependencies 
-	  (attach mixin-dependencies 
-		  name
-		  (remove-duplicates data-deps)))
-     
-      `(def-class
-	   ,name
-	   :extends ,extends
-	   :slots ,slots
-	   :constructor ,constructor
-	   :super-args ,super-args)))
-
-  (defmacro make 
-      (obj &rest args)
-    (if (fetch *mixins* obj)
-	(error "Mixins cannot be instantiated directly"))
-    `(make-instance ',obj ,@args))
-
-					;(defmacro def-class (name extends slots &key constructor) 
-					;    (setf slots (append slots `(name ,name)))
-					;    (attach class-slots 
-					;            :key name 
-					;            :value (append (combine-slots extends) 
-					;                           (grab-slots slots)))
-					;    `(progn (defclass ,name 
-					;                      ,extends 
-					;                      ,(gen-slots name slots))
-					;            (defmethod initialize-instance 
-					;                       :after 
-					;                       ((obj ,name) &key)
-					;                       (with-accessors ,(grab-slots-with-accessors slots) obj 
-					;                                       ,@constructor))))
-					;THIS VERSION DOES NOT WORK TELL DR MEISTER!
-
-
-
-
-					;(let ((counter 0))
-					;    (flet ((run-code-with-state (code) 
-					;       (progn (setf counter (1+ counter)) code)))
-					;      (defmacro new (name &rest args)
-					;        `(make-instance ',name 
-					;            ,@(mapcar (lambda (x) 
-					;            (if (evenp counter)
-					;                (run-code-with-state `(quote ,x))
-					;                (run-code-with-state x)))    
-					;          args)))))
-
-
-
-  (def-generic fetch (coll item-to-fetch))
-
-  (def-method fetch ((coll hash-table) k)
-    (gethash k coll))
+	 (if ',constructor-requirements
+	     (if-not (and ,@constructor-requirements)
+		     (error (format nil "Please provide the following arguements for the constructor: ~A"
+				    (loop for arg in ',constructor-requirements
+				       collect (loop for a in ',constructor-args
+						  when (eq a arg)
+						  return arg))))))
+	 `(make-instance ',',name
+			 ,@(flatten
+			    (loop
+			       for (arg value) in (partition
+						   (interleave ',constructor-args
+							       (list ,@constructor-args))
+						   2)
+			       when (not (nil? value)) 
+			       collect (list (to-keyword arg) value))))))))
 
 (defmacro -=
     (var value)
@@ -257,6 +211,34 @@
     (init &body exps)
   `(arrow-macros:-> ,init ,@exps))
 
+(defmacro set-slots
+    (obj &rest slots-and-values)
+  (append '(progn) (loop for (slot value) in (partition slots-and-values 2)
+                         collect `(setf (,slot ,obj) ,value))))
+
+
+(defmacro defun-fast
+    (name args &rest code)
+  (let ((unroll (generate-with-accessors args code)))
+	(if (eq (first unroll) 'with-accessors)
+	    (setf unroll (list unroll)))
+	(multiple-value-bind (defun-args types-code)
+	    (generate-type-information args)
+	  `(progn (declaim (inline ,name))
+		  (defun ,name
+		      ,defun-args
+		      (declare (optimize (speed 3) (safety 0)))
+		      ,@types-code
+		      ,@unroll)))))
+
+;; TODO implement this
+;; fast defmethods do not use accessors, are inlined, and they are not generic, use them only in speed
+;; critical situations
+(defmacro def-method-fast
+    (name args &rest code)
+  ;;TODO FINISH THIS!!11
+  `(defun-fast ,name ,args ,@code))
+
 
  ;export every symbol in the current package except the ones listed package
 (defmacro export-all-symbols-except
@@ -266,6 +248,5 @@
 					  (eql (symbol-package sym) pack))
 				 (export sym)))))
  
-
 (export-all-symbols-except nil)
   

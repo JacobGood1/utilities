@@ -6,7 +6,9 @@
   :license "Specify license here"
   :depends-on (#:infix-math
 	       #:arrow-macros
-	       #:esrap)
+	       #:esrap
+	       #:closer-mop
+	       #:inlined-generic-function)
   :serial t
   :components ((:file "package")
 	       (:file "utility-functions")

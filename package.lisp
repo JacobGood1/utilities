@@ -2,7 +2,7 @@
 
 ;; utilities exports everything from its own file
 (defpackage #:utilities
-  (:use #:cl :esrap))
+  (:use #:cl :esrap :inlined-generic-function))
 
 
 

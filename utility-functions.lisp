@@ -2,7 +2,6 @@
 
  (infix-math:use-infix-math)
 
-  
 
 (declaim (inline nil?))
 (defun nil?
@@ -89,7 +88,6 @@
       (if source (rec source nil) nil)))
   
 
-(defun slots-of (obj) (gethash obj *class-slots*))
 
  ;TODO need to make first work on every seqable structure!
 (defgeneric 1st (seq))
@@ -104,15 +102,27 @@
     (funcall lisp-first coll))
 
   (defmethod 1st ((coll vector))
-    (if-not (= (length coll)
-	       0)
-	    (aref coll 0)
-	    nil))
+    (if (not (= (length coll)
+		0))
+	(aref coll 0)
+	nil))
 
+(defparameter *class-dependencies* (make-hash-table))
 
-(defparameter *class-slots* (make-hash-table))
-(defparameter *mixin-dependencies* (make-hash-table))
-(defparameter *mixins* (make-hash-table))
+;TODO test to see if slots of is working right with methods and inheritance
+
+(defun slots-of
+    (class)
+  (if (not (nil? class))
+      (let ((deps (append (gethash class *class-dependencies*) (list class))))
+	(remove-duplicates (flatten (loop for class in deps
+				       collect (loop for slot in (closer-mop:class-slots (find-class class))
+						  collect (closer-mop:slot-definition-name slot))))))))
+
+(defun finalize-class
+    (class)
+  (if (not (in? '(integer string float symbol) class)) 
+      (closer-mop:finalize-inheritance (find-class class))))
 
 (defun gen-slots (slots)
   (restart-case 
@@ -154,8 +164,8 @@
 	 ,obj))
 
 (defun make-accessor-args
-      (obj-list)
-    "takes an argument list that would normally
+    (obj-list)
+  "takes an argument list that would normally
    go to the defmethod function...
    '((point1 one) (point2 two))
    it then obtains the slots of the objects that defmethod dispatches on
@@ -164,20 +174,34 @@
    it then takes these slots and matches them with their object like so...
    ((WITH-ACCESSORS ((POINT1-X X) (POINT1-Y Y)) ONE)
     (WITH-ACCESSORS ((POINT2-X X) (POINT2-Y Y)) TWO) NIL)"
-    (loop for (var obj) in obj-list 
-       collect (cond ((eq obj nil)
-		      nil)
-		     ((gethash obj *mixins*)
-		      `(with-accessors
-			     ,(loop for slot in (gethash obj mixin-dependencies) 
-				 collect (list (to-symbol (to-string var "-" slot)) 
-					       slot)) 
-			     ,var))
-		     (:default
-		      `(with-accessors ,(loop for slot in (slots-of obj) 
-					   collect (list (to-symbol (to-string var "-" slot)) 
-							 slot)) 
-			   ,var)))))
+    ;;;IF NOT DOES NOT EXIST YET!!!11
+  (loop for (var obj) in obj-list
+     for slots = (slots-of obj)
+     if slots
+     collect `(with-accessors ,(loop for slot in slots
+			      collect (list (to-symbol (to-string var "-" slot)) 
+					    slot)) 
+		  ,var)))
+
+(defun make-slot-args
+    (obj-list)
+  "takes an argument list that would normally
+   go to the defmethod function...
+   '((point1 one) (point2 two))
+   it then obtains the slots of the objects that defmethod dispatches on
+   assuming one and two are points...
+   ((x y) (x y))
+   it then takes these slots and matches them with their object like so...
+   ((WITH-slots ((POINT1-X X) (POINT1-Y Y)) ONE)
+    (WITH-slots ((POINT2-X X) (POINT2-Y Y)) TWO) NIL)"
+    ;;;IF NOT DOES NOT EXIST YET!!!11
+  (loop for (var obj) in obj-list
+     for slots = (slots-of obj)
+     if slots
+     collect `(with-slots ,(loop for slot in slots
+			      collect (list (to-symbol (to-string var "-" slot)) 
+					    slot)) 
+		  ,var)))
 
 (defun place-method-at-the-end-of-with-accessors
       (with-accessor-list body)
@@ -191,9 +215,9 @@
 			 (list last-code)))) 
       code))
 
-  (defun nest-with-accessors 
-      (with-accessor-list)
-    "takes a list such as the one above ^ ...
+(defun nest-with-accessors 
+    (with-accessor-list)
+  "takes a list such as the one above ^ ...
   ((WITH-ACCESSORS ((POINT1-X X) (POINT1-Y Y)) ONE)
     (WITH-ACCESSORS ((POINT2-X X) (POINT2-Y Y)) TWO) NIL)
   and nests the with-accessors together like so...
@@ -201,11 +225,32 @@
                 ONE
                 (WITH-ACCESSORS ((POINT2-X X) (POINT2-Y Y)) TWO (NIL)))
   the nil at the end does not matter..." 
-    (if (not (= (length with-accessor-list) 1)) 
-	(append (first with-accessor-list) 
-		(list (nest-with-accessors (rest with-accessor-list))))
-	(first with-accessor-list)))
+  (if (not (= (length with-accessor-list) 1)) 
+      (append (first with-accessor-list) 
+	      (list (nest-with-accessors (rest with-accessor-list))))
+      (first with-accessor-list)))
 
+
+(defun generate-with-slots
+    (objects code)
+  (arrow-macros:-> (make-slot-args objects)
+    (place-method-at-the-end-of-with-accessors code)
+    nest-with-accessors))
+
+(defun generate-with-accessors
+    (objects code)
+  "code should be a list of lists!"
+  (arrow-macros:-> (make-accessor-args objects)
+    (place-method-at-the-end-of-with-accessors code)
+    nest-with-accessors))
+
+(defun generate-type-information
+    (types)
+  "types = ((x integer) (y something)) the function must take a list of lists designating their type"
+  (loop for (arg type) in types
+     collect arg into args
+     collect (if type `(declare (type ,type ,arg))) into types-code
+     finally (return (values args types-code))))
 
 
 (defun combine-slots (classes)
@@ -225,39 +270,43 @@
   (defclass printer-base () ())
 
 ;print-object makes all objects of the type printer-base print more readable
-  (defmethod print-object ((object printer-base) stream)
-    (format stream
-	    "Object: ~A :slots ~A"
-	    (name object)
-	    (interleave (slots-of (name object))
-			(loop for slot in (slots-of (name object))
-			   collect (funcall slot object)))))
+(defmethod print-object ((object printer-base) stream)
+  (format stream
+	  "object: ~A :slots ~A"
+	  (name object)
+	  (partition (interleave (loop for slot in (slots-of (name object))
+			 when (not (eq slot 'name))
+			 collect slot)
+		      (loop for slot in (slots-of (name object))
+			   when (not (eq slot 'name))
+			 collect (funcall slot object)))
+		     2)))
 
 (defgeneric attach (coll &optional key value))
 
-  (defmethod attach ((coll hash-table) &optional key value)
-    (if-not (and key value)
-	    (error "A value and key must be supplied to the method attach when invoked on a map")
-	    (setf (gethash key coll) 
-		  value)))
+(defmethod attach ((coll hash-table) &optional key value)
+  (if (not (and key value))
+      (error "A value and key must be supplied to the method attach when invoked on a map")
+      (setf (gethash key coll) 
+	    value)))
   
-  (defmethod attach ((coll vector) &optional value key)
-    (cond ((and value key)
-	   (error "attach takes 2 arguements when applied to vectors, not 3"))
-	  ((nil? value)
-	   (error "A value must be supplied to the method attach"))
-	  (:default
-	   (vector-push-extend value coll))))
+(defmethod attach ((coll vector) &optional value key)
+  (cond ((and value key)
+	 (error "attach takes 2 arguements when applied to vectors, not 3"))
+	((nil? value)
+	 (error "A value must be supplied to the method attach"))
+	(:default
+	 (vector-push-extend value coll))))
 
-  (defmethod attach ((coll cons) &optional value pos)
-    (cond ((nil? value) 
-	   (error "A value must be supplied to the method attach"))
-	  ((and value pos)
-	   (push value (cdr (nthcdr pos coll)))
-	   coll)
-	  (:default
-	   (push value (cdr (nthcdr 0 coll)))
-	   coll)))
+(defmethod attach ((coll cons) &optional value pos)
+  (cond ((nil? value) 
+	 (error "A value must be supplied to the method attach"))
+	((and value pos)
+	 (push value (cdr (nthcdr pos coll)))
+	  coll)
+	(:default
+	 (push value (cdr (nthcdr 0 coll)))
+	    coll)))
 
 
 
