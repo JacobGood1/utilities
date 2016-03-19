@@ -50,20 +50,94 @@
 	 ,(reverse (cons code 
 			 (reverse (create-with-accessor-for-overrides-and-setters obj)))))))
 
+
+(var *formatted-code-string* "")
+
+;TODO NO SYMZ EXPOERTED
+;no exporting syms '(conc-list-to-fcs *formatted-code-string* word paren whitespace number random-sym)
+
+(defun conc-list-to-fcs
+    (word)
+  (setf *formatted-code-string*
+	(concatenate 'string
+		     *formatted-code-string*
+		     (loop
+			with str = ""
+			for char in word
+			do (if (consp char)
+			       ()
+			       (setf str (concatenate 'string
+						      str
+						      (string char))))
+			finally (return str)))))
+
+(defrule word
+    (+ (alpha-char-p character))
+  (:lambda (word)
+    (conc-list-to-fcs word)))
+
+(defrule number
+    (+ (or (or "1" "2" "3" "4" "5" "6" "7" "8" "9" "0") "." "/"))
+  (:lambda (num)
+    (conc-list-to-fcs num)))
+
+(defrule paren
+    (or #\( #\))
+  (:lambda (p)
+    (setf *formatted-code-string*
+	  (concatenate 'string
+		       *formatted-code-string*
+		       (string p)))))
+
+(defrule whitespace
+	       (+ (or #\space #\tab #\newline))
+	     (:lambda (ws)
+	       (conc-list-to-fcs ws)))
+
+(defrule random-sym
+    character
+  (:lambda (c)
+    (setf *formatted-code-string*
+	  (concatenate 'string
+		       *formatted-code-string*
+		       (string c)))))
+
+(defrule anything-but-quote (not #\"))
+
+(defrule string-rule
+    (and #\" (+ anything-but-quote) #\")
+  (:lambda (c)
+    (loop
+       for elm in c
+       do (if (not (consp elm))
+	      (setf *formatted-code-string*
+		    (concatenate 'string
+				 *formatted-code-string*
+				 (to-string elm)))
+	      (conc-list-to-fcs elm)))))
+
+(defun swap-symbol
+    (text word-to-replace word)
+  (setf *formatted-code-string* "")
+  (eval `(defrule swap-word ,(write-to-string word-to-replace :case :downcase)
+	   (:lambda (w)
+	     (declare (ignore w))
+	     (setf *formatted-code-string*
+		   (concatenate 'string
+				*formatted-code-string*
+				,(write-to-string word :case :downcase))))))
+  (parse '(+ (or swap-word string-rule whitespace paren word number random-sym))
+	 (write-to-string text :case :downcase))
+  (read-from-string *formatted-code-string*))
+
 ;;available words: value
 (defmacro override-setter 
-    (obj method-name code &key re-name)
-  (if re-name
-      (progn
-	(fmakunbound method-name)
-	`(defmethod (setf ,re-name) 
-	     (value ,(list obj obj)) 
-	   ,(reverse (cons code 
-			   (reverse (create-with-accessor-for-overrides-and-setters obj))))))
-      `(defmethod (setf ,method-name) 
-	   (value ,(list obj obj)) 
-	 ,(reverse (cons code 
-			 (reverse (create-with-accessor-for-overrides-and-setters obj)))))))
+    (obj method-name code)
+  `(defmethod (setf ,method-name) 
+       (value ,(list obj obj)) 
+     ,(reverse (cons (swap-symbol code method-name `(slot-value ,obj ',method-name)) 
+		     (reverse (create-with-accessor-for-overrides-and-setters obj))))
+     ,obj))
 
    
 (defmacro def-method 

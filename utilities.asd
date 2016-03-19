@@ -8,7 +8,8 @@
 	       #:arrow-macros
 	       #:esrap
 	       #:closer-mop
-	       #:inlined-generic-function)
+	       #:inlined-generic-function
+	       #:cl-parallel)
   :serial t
   :components ((:file "package")
 	       (:file "utility-functions")

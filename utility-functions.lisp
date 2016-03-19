@@ -62,13 +62,15 @@
 			 (rec (cdr x) acc))))))
       (rec x nil)))
 
+;TODO make this preserve the case one day
+;WARNING make sure everything in code is lower case
 (defun to-string (&rest args)
     (apply #'concatenate 
 	   'string 
 	   (loop for i in args 
 	      collect  (if (stringp i) 
 			   i 
-			   (write-to-string i)))))
+			   (write-to-string i :case :downcase)))))
   
   (defun to-symbol (str) (intern (string-upcase str)))
 
@@ -272,7 +274,7 @@
 ;print-object makes all objects of the type printer-base print more readable
 (defmethod print-object ((object printer-base) stream)
   (format stream
-	  "object: ~A :slots ~A"
+	  "[object: ~A slots: ~A]"
 	  (name object)
 	  (partition (interleave (loop for slot in (slots-of (name object))
 			 when (not (eq slot 'name))
@@ -308,8 +310,10 @@
 	 (push value (cdr (nthcdr 0 coll)))
 	    coll)))
 
-
-
+(declaim (inline list?))
+(defun list?
+    (list?)
+  (consp list?))
 
 
   
