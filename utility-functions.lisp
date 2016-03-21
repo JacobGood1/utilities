@@ -75,7 +75,11 @@
   (defun to-symbol (str) (intern (string-upcase str)))
 
   (defun to-keyword (name) 
-    (values (intern (string-upcase name) "KEYWORD")))
+    (values (intern (string-upcase (if (or (typep name 'integer)
+					   (typep name 'float))
+				       (write-to-string name)
+				       name))
+				       "KEYWORD")))
   
   (defun partition (source n)
     (if (zerop n) (error "zero length"))
@@ -127,18 +131,11 @@
       (closer-mop:finalize-inheritance (find-class class))))
 
 (defun gen-slots (slots)
-  (restart-case 
-      (if (not (evenp (length slots)))
-	  (error "Not all slots have been assigned a value!")
-	  (loop for (a b) in (partition slots 2)
-	     collect `(,a
-		       :initarg  ,(to-keyword a) 
-		       :initform ,b 
-		       :accessor ,a)))
-    (use-value (value)
-      :report "Create a new slot list"
-      :interactive (lambda () (list (ask "Value: ")))
-      (gen-slots value))))
+  (loop for (a b) in slots
+     collect `(,a
+	       :initarg  ,(to-keyword a) 
+	       :initform ,b 
+	       :accessor ,a)))
 
 (defun append-obj-slots 
       (obj-list)
@@ -177,13 +174,9 @@
    ((WITH-ACCESSORS ((POINT1-X X) (POINT1-Y Y)) ONE)
     (WITH-ACCESSORS ((POINT2-X X) (POINT2-Y Y)) TWO) NIL)"
     ;;;IF NOT DOES NOT EXIST YET!!!11
-  (loop for (var obj) in obj-list
-     for slots = (slots-of obj)
-     if slots
-     collect `(with-accessors ,(loop for slot in slots
-			      collect (list (to-symbol (to-string var "-" slot)) 
-					    slot)) 
-		  ,var)))
+  `(with-accessors ,(loop for slot in (slots-of (second (first obj-list)))
+		       collect (list slot slot)) 
+       ,(first (first obj-list))))
 
 (defun make-slot-args
     (obj-list)
@@ -243,8 +236,7 @@
     (objects code)
   "code should be a list of lists!"
   (arrow-macros:-> (make-accessor-args objects)
-    (place-method-at-the-end-of-with-accessors code)
-    nest-with-accessors))
+    (append code)))
 
 (defun generate-type-information
     (types)
