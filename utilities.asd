@@ -9,7 +9,8 @@
 	       #:esrap
 	       #:closer-mop
 	       #:inlined-generic-function
-	       #:cl-parallel)
+	       #:cl-parallel
+	       #:cffi)
   :serial t
   :components ((:file "package")
 	       (:file "utility-functions")
