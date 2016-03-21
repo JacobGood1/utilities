@@ -141,25 +141,18 @@
 
    
 (defmacro def-method 
-    (name args &rest body)
-  (let* ((unroll nil)
-	 (objects (loop for elm in args
-		     when (consp elm)
-		     collect (progn
-			       (finalize-class (second elm))
-			       elm))))
-    
-   (if (not (nil? objects)) 
-       (setf unroll (generate-with-accessors objects 
-					     body))
-       (setf unroll body))
-   
-   (if (eq (first unroll) 'with-accessors)
-       (setf unroll (list unroll)))
-       
+    (name object args &rest body)
+  (let* ((args (setf args (append args (list (list object object))))))
+    (loop for elm in args
+       when (consp elm)
+       collect (progn
+		 (finalize-class (second elm))
+		 elm))
     `(defmethod ,name 
 	 ,args 
-       ,@unroll)))
+       (with-accessors ,(loop for x in (slots-of object) collect (list x x))
+	   ,object
+	 ,@body))))
 
 (def-generic fetch (coll item-to-fetch))
 
@@ -198,9 +191,9 @@
 
 ;;temporarily creating a new implimentation
 (defmacro def-class
-    (name &key extends slots constructor super-args dependencies)
+    (name &key extends slots constructor super-args dependencies inline-slots?)
 
-  (eval `(defclass ,name ,extends ,(loop for (slot value) in (partition slots 2) collect slot)))
+  (eval `(defclass ,name ,extends ,(loop for (slot value) in slots collect slot)))
 
   (closer-mop:finalize-inheritance (find-class name))
 
@@ -220,7 +213,7 @@
 
   (let* ((slots-and-values slots)
 	 (slots (slots-of name))
-	 (def-method-code nil)
+	 (constructor-code nil)
 	 (constructor-args (first (rest constructor)))
 	 (constructor-requirements constructor-args)
 	 (constructor-body (cddr constructor)))
@@ -230,7 +223,7 @@
 	     when (eq slot arg)
 	     do (error (format nil "The slot: ~A and constructor arguement: ~A should not have the same symbol!" slot arg))))
 
-    (setf def-method-code (if constructor
+    (setf constructor-code (if constructor
 			      `(defmethod initialize-instance
 				   :after
 				 ((obj ,name) &key ,@constructor-args)
@@ -240,39 +233,86 @@
 				   ,@constructor-body
 				   (when (next-method-p)
 				     ,(if super-args `(call-next-method obj ,@super-args) `(call-next-method obj)))))))
+    (loop for slot in slots
+       do (eval `(progn (fmakunbound ',slot) (fmakunbound '(setf ,slot)))))
     
-    `(progn
-					
-       (defclass ,name 
-	   ,extends 
-	 ,(append (gen-slots slots-and-values) `((name :initform ',name :reader name :allocation :class))))
-       
-       ,def-method-code
-       
-       ',(setf constructor-args (append constructor-args slots))
+    (let* ((class nil))
+      (multiple-value-bind (slots-and-values generic-getters generic-setters getters setters)
+	  (loop for (slot value) in slots-and-values
 
-       (defmacro ,name
-	   (&key ,@constructor-args)
-	 
-	 (if ',dependencies
-	     (error "This class has dependencies, it cannot be instantiated directly"))
-	 
-	 (if ',constructor-requirements
-	     (if-not (and ,@constructor-requirements)
-		     (error (format nil "Please provide the following arguements for the constructor: ~A"
-				    (loop for arg in ',constructor-requirements
-				       collect (loop for a in ',constructor-args
-						  when (eq a arg)
-						  return arg))))))
-	 `(make-instance ',',name
-			 ,@(flatten
-			    (loop
-			       for (arg value) in (partition
-						   (interleave ',constructor-args
-							       (list ,@constructor-args))
-						   2)
-			       when (not (nil? value)) 
-			       collect (list (to-keyword arg) value))))))))
+	     collect `(,slot :initarg ,(to-keyword slot) :initform ,value)
+	     into slots-and-values
+	       
+	     collect (if inline-slots?
+			 `(defgeneric ,slot
+			      (slot)
+			    (:generic-function-class inlined-generic-function:inlined-generic-function))
+			 `(defgeneric ,slot
+			      (slot)))
+	     into generic-getters
+
+	     collect (if inline-slots?
+			 `(defgeneric (setf ,slot)
+			      (value slot)
+			    (:generic-function-class inlined-generic-function:inlined-generic-function))
+			 `(defgeneric (setf ,slot)
+			      (value slot)))
+	     into generic-setters
+
+	     collect `(defmethod ,slot ((,name ,name)) (slot-value ,name ',slot))
+	     into getters
+
+	     collect `(defmethod (setf ,slot) (value (,name ,name))
+			(setf (slot-value ,name ',slot) value))
+	     into setters
+	       
+	     finally (return (values slots-and-values generic-getters generic-setters getters setters)))
+
+	(setf slots-and-values (append slots-and-values `((name :initform ',name :reader name :allocation :class))))
+
+	(setf class `(defclass ,name ,extends ,slots-and-values))
+	
+	`(progn
+	   
+	   ,class
+	   ,@generic-getters
+	   ,@generic-setters
+	   ,@getters
+	   ,@setters
+
+	   ,constructor-code
+	     
+	   ',(setf constructor-args (append constructor-args slots))
+
+	   (defmacro ,name
+	       (&key ,@constructor-args)
+	     
+	     (if ',dependencies
+		 (error "This class has dependencies, it cannot be instantiated directly"))
+	     
+	     (if ',constructor-requirements
+		 (if-not (and ,@constructor-requirements)
+			 (error (format nil "Please provide the following arguements for the constructor: ~A"
+					(loop for arg in ',constructor-requirements
+					   collect (loop for a in ',constructor-args
+						      when (eq a arg)
+						      return arg))))))
+	     `(make-instance ',',name
+			     ,@(loop
+				with code = '()
+				for elm in
+				  (loop
+				     for (arg value) in (partition
+							 (interleave ',constructor-args
+								     (list ,@constructor-args))
+							 2)
+				     when (not (nil? value)) 
+				     collect (list (to-keyword arg) value))
+				do (setf code (append code elm))
+				finally (return code)))))))))
+
+
+
 
 (defmacro -=
     (var value)
