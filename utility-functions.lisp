@@ -315,5 +315,15 @@
     (list?)
   (consp list?))
 
+;;;into
+(defun into-internal
+    (obj list)
+  (loop
+     with obj = (funcall (first list) obj)
+     for s in (rest list)
+     do (setf obj (funcall s obj))
+     finally (return obj)))
 
-  
+(defmacro into
+    (obj &rest fn-slots)
+  `(into-internal ,obj ',fn-slots))
