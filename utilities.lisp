@@ -190,10 +190,22 @@
 ;		finally (return error-string)))))
 
 ;;temporarily creating a new implimentation
-(defmacro def-class
-    (name &key extends slots constructor super-args dependencies inline-slots?)
+;;TODO remove inlining, make raw slots instead
 
-  (eval `(defclass ,name ,extends ,(loop for (slot value) in slots collect slot)))
+;(let ((raw-class-private (all-permutations '(:raw :private :class)))
+;      (raw-class-nil (all-permutations '(:raw :class nil)))
+;      (raw-private-nil (all-permutations '(:raw :private nil)))
+;      (private-class-nil (all-permutations '(:private :class nil)))
+;      (raw-nil-nil '((:raw nil nil) (nil :raw nil) (nil nil :raw)))
+;      (private-nil-nil '((:private nil nil) (nil :private nil) (nil nil :private)))
+;      (class-nil-nil '((:class nil nil) (nil :class nil) (nil nil :class)))
+;      (nil-nil-nil '(nil nil nil)))
+;  (interpose raw-class-private '(setf :initarg)))
+
+(defmacro def-class
+    (name &key extends slots constructor super-args dependencies)
+
+  (eval `(defclass ,name ,extends ,(loop for (slot value opt1 opt2) in slots collect slot)))
 
   (closer-mop:finalize-inheritance (find-class name))
 
@@ -208,9 +220,29 @@
 
   (if dependencies
       (setf (gethash name *class-dependencies*) dependencies))
-
+  
+  (loop
+     with objs-with-deps = (loop
+			      for obj in extends
+			      collect (if (gethash obj *class-dependencies*)
+					  (list obj (gethash obj *class-dependencies*))))
+			   
+     with objs-to-check = (append extends (list name))
+       
+     for (object dependencies) in objs-with-deps
+     do (loop
+	   for dep in dependencies
+	   do (if (not (in? objs-to-check dep))
+		  (error (to-string "The class, "
+				    object
+				    ", depends upon, "
+				    dep
+				    ", which is not this class or any class that "
+				    name
+				    " extends!")))))
+  
   (setf extends (append extends '(printer-base)))
-
+  
   (let* ((slots-and-values slots)
 	 (slots (slots-of name))
 	 (constructor-code nil)
@@ -224,64 +256,49 @@
 	     do (error (format nil "The slot: ~A and constructor arguement: ~A should not have the same symbol!" slot arg))))
 
     (setf constructor-code (if constructor
-			      `(defmethod initialize-instance
-				   :after
-				 ((obj ,name) &key ,@constructor-args)
-				 (with-accessors ,(loop for i in slots
-						     collect (list i i)) 
-				     obj 
-				   ,@constructor-body
-				   (when (next-method-p)
-				     ,(if super-args `(call-next-method obj ,@super-args) `(call-next-method obj)))))))
-    (loop for slot in slots
-       do (eval `(progn (fmakunbound ',slot) (fmakunbound '(setf ,slot)))))
+			       `(defmethod initialize-instance
+				    :after
+				  ((obj ,name) &key ,@constructor-args)
+				  (with-accessors ,(loop for i in slots
+						      collect (list i i)) 
+				      obj 
+				    ,@constructor-body
+				    (when (next-method-p)
+				      ,(if super-args `(call-next-method obj ,@super-args) `(call-next-method obj)))))))
     
-    (let* ((class nil))
-      (multiple-value-bind (slots-and-values generic-getters generic-setters getters setters)
-	  (loop for (slot value) in slots-and-values
+    
+    (let* ((class nil)
+	   (export-list '()))
+      (multiple-value-bind (slots-and-values)
+	  (loop for (slot value opt1 opt2) in slots-and-values
 
-	     collect `(,slot :initarg ,(to-keyword slot) :initform ,value)
+	     collect (trivia:match `(,opt1 ,opt2)
+		       ('(:raw nil)       (setf export-list (append export-list (list slot)))
+			                 `(,slot :initarg ,(to-keyword slot) :initform ,value))
+		       ('(nil :raw)       (setf export-list (append export-list (list slot)))
+			 `(,slot :initarg ,(to-keyword slot) :initform ,value))
+		       ('(:raw :private) `(,slot :initarg ,(to-keyword slot) :initform ,value))
+		       ('(:private :raw) `(,slot :initarg ,(to-keyword slot) :initform ,value))
+		       ('(:private nil)  `(,slot :initarg ,(to-keyword slot) :initform ,value :accessor ,slot))
+		       ('(nil :private)  `(,slot :initarg ,(to-keyword slot) :initform ,value :accessor ,slot))
+		       ('(nil nil)        (setf export-list (append export-list (list slot)))
+			                 `(,slot :initarg ,(to-keyword slot) :initform ,value :accessor ,slot))
+		       (otherwise (error
+				   (to-string "Error! Slot options are incorrect... 
+                                               expected option of :raw, :private, not kek"))))
 	     into slots-and-values
-	       
-	     collect (if inline-slots?
-			 `(defgeneric ,slot
-			      (slot)
-			    (:generic-function-class inlined-generic-function:inlined-generic-function))
-			 `(defgeneric ,slot
-			      (slot)))
-	     into generic-getters
-
-	     collect (if inline-slots?
-			 `(defgeneric (setf ,slot)
-			      (value slot)
-			    (:generic-function-class inlined-generic-function:inlined-generic-function))
-			 `(defgeneric (setf ,slot)
-			      (value slot)))
-	     into generic-setters
-
-	     collect `(defmethod ,slot ((,name ,name)) (slot-value ,name ',slot))
-	     into getters
-
-	     collect `(defmethod (setf ,slot) (value (,name ,name))
-			(setf (slot-value ,name ',slot) value))
-	     into setters
-	       
-	     finally (return (values slots-and-values generic-getters generic-setters getters setters)))
-
+	     finally (return slots-and-values))
+	
 	(setf slots-and-values (append slots-and-values `((name :initform ',name :reader name :allocation :class))))
-
+	
 	(setf class `(defclass ,name ,extends ,slots-and-values))
 	
 	`(progn
 	   
 	   ,class
-	   ,@generic-getters
-	   ,@generic-setters
-	   ,@getters
-	   ,@setters
 
 	   ,constructor-code
-	     
+	   
 	   ',(setf constructor-args (append constructor-args slots))
 
 	   (defmacro ,name
@@ -299,17 +316,20 @@
 						      return arg))))))
 	     `(make-instance ',',name
 			     ,@(loop
-				with code = '()
-				for elm in
-				  (loop
-				     for (arg value) in (partition
-							 (interleave ',constructor-args
-								     (list ,@constructor-args))
-							 2)
-				     when (not (nil? value)) 
-				     collect (list (to-keyword arg) value))
-				do (setf code (append code elm))
-				finally (return code)))))))))
+				  with code = '()
+				  for elm in
+				    (loop
+				       for (arg value) in (partition
+							   (interleave ',constructor-args
+								       (list ,@constructor-args))
+							   2)
+				       when (not (nil? value)) 
+				       collect (list (to-keyword arg) value))
+				  do (setf code (append code elm))
+				  finally (return code))))
+	   
+	   (loop for symbol in ',(append export-list (list name)) do (export symbol))
+	   "SUCCESS")))))
 
 
 
@@ -333,17 +353,14 @@
 
 (defmacro defun-fast
     (name args &rest code)
-  (let ((unroll (generate-with-accessors args code)))
-	(if (eq (first unroll) 'with-accessors)
-	    (setf unroll (list unroll)))
-	(multiple-value-bind (defun-args types-code)
-	    (generate-type-information args)
-	  `(progn (declaim (inline ,name))
-		  (defun ,name
-		      ,defun-args
-		      (declare (optimize (speed 3) (safety 0)))
-		      ,@types-code
-		      ,@unroll)))))
+  (multiple-value-bind (defun-args types-code)
+      (generate-type-information args)
+    `(progn (declaim (inline ,name))
+	    (defun ,name
+		,defun-args
+	      (declare (optimize (speed 3) (safety 0)))
+	      ,@types-code
+	      ,@code))))
 
 ;; TODO implement this
 ;; fast defmethods do not use accessors, are inlined, and they are not generic, use them only in speed
@@ -421,6 +438,22 @@
 
 
 
+;defun redefinition exports symbol automatically
+(defmacro defn (name args &rest body)
+  `(progn (defun ,name ,args ,@body)
+	  (export ',name)))
+
+;private version
+(defmacro defn- (name args &rest body)
+  `(defun ,name ,args ,@body))
+
+;defmacro redefinition exports symbol automatically
+(defmacro def-spel (name args &rest body)
+  `(progn (defmacro ,name ,args ,@body)
+	  (export ',name)))
+;private version
+(defmacro def-spel- (name args &rest body)
+  `(defmacro ,name ,args ,@body))
 
 ;NOTHING GOES PAST THIS.
 (export-all-symbols-except nil)

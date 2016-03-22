@@ -21,16 +21,16 @@
      collect i))
 
   ;TODO need to make this a multimethod
-  (defun interleave (a b)
+(defun interleave (a b)
   (flet ((nil-pad (list on-list)
-          (append list (make-list (max 0 (- (length on-list) (length list)))))))
+	   (append list (make-list (max 0 (- (length on-list) (length list)))))))
     (loop for x in (nil-pad a b)
-          for y in (nil-pad b a)
-          append (list x y))))
+       for y in (nil-pad b a)
+       append (list x y))))
 
-  (defun insert-after (lst index newelt)
-    (push newelt (cdr (nthcdr index lst))) 
-    lst)
+(defun insert-after (lst index newelt)
+  (push newelt (cdr (nthcdr index lst))) 
+  lst)
 
 ;(fmakunbound 'imap) just in case you need to redifine a generic fn
 
@@ -319,3 +319,18 @@
 (defmacro into
     (obj &rest fn-slots)
   `(into-internal ,obj ',fn-slots))
+
+
+(defun all-permutations (list)
+  (cond ((null list) nil)
+        ((null (cdr list)) (list list))
+        (t (loop for element in list
+	      append (mapcar (lambda (l) (cons element l))
+			     (all-permutations (remove element list)))))))
+
+(defun interpose
+    (list value)
+  (loop with ret = '()
+     for x in list
+     do (setf ret (append ret (list x value)))
+     finally (return ret)))
