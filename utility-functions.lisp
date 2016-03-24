@@ -114,7 +114,7 @@
 	nil))
 
 (defparameter *class-dependencies* (make-hash-table))
-
+(defparameter *keys-that-exist-already* (make-hash-table))
 ;TODO test to see if slots of is working right with methods and inheritance
 
 (defun slots-of
@@ -258,7 +258,7 @@
   (defun grab-slots-with-accessors (slots)
     (loop for slot in slots collect (list slot slot)))
 
-
+;;
 ;printer-base is an object that ecery object derives from
   ;it will ensure that all object created by def-class are printed much readable
   (defclass printer-base () ())
@@ -269,11 +269,12 @@
 	  "[object: ~A slots: ~A]"
 	  (name object)
 	  (partition (interleave (loop for slot in (slots-of (name object))
-			 when (not (eq slot 'name))
-			 collect slot)
-		      (loop for slot in (slots-of (name object))
-			   when (not (eq slot 'name))
-			 collect (funcall slot object)))
+				    when (not (eq slot 'name))
+				    collect slot)
+				 (loop
+				    for slot in (slots-of (name object))
+				    when (not (eq slot :name))
+				    collect (funcall slot object)))
 		     2)))
 
 (defgeneric attach (coll &optional key value))

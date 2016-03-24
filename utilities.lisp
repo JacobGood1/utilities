@@ -207,7 +207,7 @@
     (name &key extends slots constructor super-args dependencies)
 
   (eval `(defclass ,name ,extends ,(loop for (slot value opt1 opt2) in slots collect slot)))
-
+  
   (closer-mop:finalize-inheritance (find-class name))
 
   (if (and (nil? slots)
@@ -227,7 +227,7 @@
 			      for obj in extends
 			      collect (if (gethash obj *class-dependencies*)
 					  (list obj (gethash obj *class-dependencies*))))
-			   
+       
      with objs-to-check = (append extends (list name))
        
      for (object dependencies) in objs-with-deps
@@ -243,7 +243,7 @@
 				    " extends!")))))
   
   (setf extends (append extends '(printer-base)))
-  
+ 
   (let* ((slots-and-values slots)
 	 (slots (slots-of name))
 	 (constructor-code nil)
@@ -272,10 +272,9 @@
 	   (export-list '()))
       (multiple-value-bind (slots-and-values)
 	  (loop for (slot value opt1 opt2) in slots-and-values
-
 	     collect (trivia:match `(,opt1 ,opt2)
 		       ('(:raw nil)       (setf export-list (append export-list (list slot)))
-			                 `(,slot :initarg ,(to-keyword slot) :initform ,value))
+			 `(,slot :initarg ,(to-keyword slot) :initform ,value))
 		       ('(nil :raw)       (setf export-list (append export-list (list slot)))
 			 `(,slot :initarg ,(to-keyword slot) :initform ,value))
 		       ('(:raw :private) `(,slot :initarg ,(to-keyword slot) :initform ,value))
@@ -328,8 +327,8 @@
 				       collect (list (to-keyword arg) value))
 				  do (setf code (append code elm))
 				  finally (return code))))
-	   
-	   (loop for symbol in ',(append export-list (list name)) do (export symbol))
+	   ;deleted export list check to see if still gone
+	   (loop for symbol in ',(list name) do (export symbol))
 	   "SUCCESS")))))
 
 
@@ -456,6 +455,30 @@
 (defmacro def-spel- (name args &rest body)
   `(defmacro ,name ,args ,@body))
 
+
+(defmacro make-map (&rest args)
+  (let* ((map (make-hash-table))
+	 (args (loop 
+		  for (key val) in (partition args 2)
+		  collect (list key (eval val))))
+	 (generate-keyword-functions
+	       (loop
+		  for (key val) in args
+		  do (setf (gethash key map) val)
+		  collect (if (and (keywordp key)
+				   (not (gethash key *keys-that-exist-already*)))
+			      (progn
+				(setf (gethash key *keys-that-exist-already*) t)
+				`(progn
+				   (declaim (inline ,key))
+				   (defgeneric ,key
+				       (object-map-or-vector)
+				     (:generic-function-class inlined-generic-function:inlined-generic-function))
+				   (defmethod ,key ((hash hash-table)) (gethash ,key hash))))))))
+	 `(progn ,@generate-keyword-functions
+		 ,map)))
+
+;;
 ;NOTHING GOES PAST THIS.
 (export-all-symbols-except nil)
   
