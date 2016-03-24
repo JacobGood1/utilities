@@ -139,20 +139,21 @@
 		     (reverse (create-with-accessor-for-overrides-and-setters obj))))
      ,obj))
 
-   
 (defmacro def-method 
     (name object args &rest body)
-  (let* ((args (setf args (append args (list (list object object))))))
-    (loop for elm in args
-       when (consp elm)
-       collect (progn
-		 (finalize-class (second elm))
-		 elm))
-    `(defmethod ,name 
-	 ,args 
-       (with-accessors ,(loop for x in (slots-of object) collect (list x x))
-	   ,object
-	 ,@body))))
+  (if (keywordp name)
+      (let* ((args (setf args (append args (list (list object object))))))
+	(loop for elm in args
+	   when (consp elm)
+	   collect (progn
+		     (finalize-class (second elm))
+		     elm))
+	`(defmethod ,name 
+	     ,args 
+	   (with-accessors ,(loop for x in (slots-of object) collect (list x x))
+	       ,object
+	     ,@body)))
+      (error "Name of the object MUST be a keyword!")))
 
 (def-generic fetch (coll item-to-fetch))
 
