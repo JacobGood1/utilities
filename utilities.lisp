@@ -279,7 +279,7 @@
 		       ('(nil :private)  `(,slot :initarg ,(to-keyword slot) :initform ,value :accessor ,slot))
 		       ('(nil nil)        (setf export-list (append export-list (list slot)))
 			
-			                 `(,slot :initarg ,(to-keyword slot) :initform ,value))
+			                 `(,slot :initarg ,(to-keyword slot) :initform ,value :accessor ,slot-key))
 		       (otherwise (error
 				   (to-string "Error! Slot options are incorrect... 
                                                expected option of :raw, :private, not kek"))))
@@ -309,9 +309,9 @@
 	`(progn
 	   
 	   ,class
-	   ,@setup-interface
-	   ,@getters
-	   ,@setters
+	   ;,@setup-interface
+	   ;,@getters
+	   ;,@setters
 	   ,constructor-code
 	   
 
@@ -479,17 +479,8 @@
 	       (loop
 		  for (key val) in args
 		  do (setf (gethash key map) val)
-		  collect (if (and (keywordp key)
-				   (not (gethash key *keys-that-exist-already*)))
-			      (progn
-				(setf (gethash key *keys-that-exist-already*) t)
-				`(progn
-				   (declaim (inline ,key))
-				   (defgeneric ,key
-				       (object-map-or-vector)
-				     (:generic-function-class inlined-generic-function:inlined-generic-function))
-				   (defmethod ,key ((hash hash-table)) (gethash ,key hash))))
-			      `(defmethod ,key ((hash hash-table)) (gethash ,key hash))))))
+		  collect (if (keywordp key)
+			    `(defmethod ,key ((hash hash-table)) (gethash ,key hash))))))
     (locally
     (declare #+sbcl(sb-ext:muffle-conditions sb-kernel:redefinition-warning))
   `(handler-bind
