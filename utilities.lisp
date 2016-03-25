@@ -293,7 +293,7 @@
 	     into setup-interface
 	     collect `(defmethod ,slot-key ((,name ,name)) (slot-value ,name ',slot))
 	     into getters
-	     collect `(defmethod (setf ,slot-key) (value (,name ,name)) (setf (,slot-key ,name) value))
+	     collect `(defmethod (setf ,slot-key) (value (,name ,name)) (setf (slot-value ,name ',slot) value))
 	     into setters
 	     finally (return (values slots-and-values setup-interface getters setters)))
 
