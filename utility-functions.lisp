@@ -272,7 +272,7 @@
 				    when (not (eq slot 'name))
 				    collect slot)
 				 (loop
-				    for slot in (slots-of (name object))
+				    for slot in (mapcar #'to-keyword (slots-of (name object)))
 				    when (not (eq slot :name))
 				    collect (funcall slot object)))
 		     2)))

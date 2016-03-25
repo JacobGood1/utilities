@@ -12,26 +12,26 @@
 	  (loop for v in (partition vars 2)  
 	     collect `(defparameter ,@v))))
 
-  (defmacro set! 
-      (&rest vars) 
-    (cons 'progn 
-	  (loop for v in (partition vars 2)  
-	     collect `(setf ,@v))))
+(defmacro set! 
+    (&rest vars) 
+  (cons 'progn 
+	(loop for v in (partition vars 2)  
+	   collect `(setf ,@v))))
 
-  (defmacro if-not (bool true &optional (false nil))
-    `(if (not ,bool) ,true ,false))
+(defmacro if-not (bool true &optional (false nil))
+  `(if (not ,bool) ,true ,false))
 
-  (defmacro fn (args &body body)
-    `(lambda ,args ,@body))
+(defmacro fn (args &body body)
+  `(lambda ,args ,@body))
 
-  (defun ask (string)
-    (princ string *query-io*)
-    (read *query-io*))
+(defun ask (string)
+  (princ string *query-io*)
+  (read *query-io*))
 
-  (defmacro def-generic (name args) 
-    (fmakunbound name) ;makes sure that this can be redifined!
-    `(defgeneric ,name 
-	 ,(append args))) ; '(&key)
+(defmacro def-generic (name args) 
+  (fmakunbound name) ;makes sure that this can be redifined!
+  `(defgeneric ,name 
+       ,(append args))) ; '(&key)
 
 
 ;;TODO cleanup overrides when you get better at lisp, there is too much redundant code
@@ -259,35 +259,47 @@
     (setf constructor-code (if constructor
 			       `(defmethod initialize-instance
 				    :after
-				  ((obj ,name) &key ,@constructor-args)
-				  (with-accessors ,(loop for i in slots
-						      collect (list i i)) 
-				      obj 
-				    ,@constructor-body
-				    (when (next-method-p)
-				      ,(if super-args `(call-next-method obj ,@super-args) `(call-next-method obj)))))))
+				  ((,name ,name) &key ,@constructor-args) 
+				  ,@constructor-body
+				  (when (next-method-p)
+				    ,(if super-args `(call-next-method ,name ,@super-args) `(call-next-method ,name))))))
     
-    
+   ;TODO this needs fixing, patterns are a fail for now
     (let* ((class nil)
 	   (export-list '()))
-      (multiple-value-bind (slots-and-values)
+      (multiple-value-bind (slots-and-values setup-interface getters setters)
 	  (loop for (slot value opt1 opt2) in slots-and-values
+	       for slot-key = (to-keyword slot)
 	     collect (trivia:match `(,opt1 ,opt2)
 		       ('(:raw nil)       (setf export-list (append export-list (list slot)))
-			 `(,slot :initarg ,(to-keyword slot) :initform ,value))
+			                  `(,slot :initarg ,(to-keyword slot) :initform ,value))
 		       ('(nil :raw)       (setf export-list (append export-list (list slot)))
-			 `(,slot :initarg ,(to-keyword slot) :initform ,value))
+			                  `(,slot :initarg ,(to-keyword slot) :initform ,value))
 		       ('(:raw :private) `(,slot :initarg ,(to-keyword slot) :initform ,value))
 		       ('(:private :raw) `(,slot :initarg ,(to-keyword slot) :initform ,value))
 		       ('(:private nil)  `(,slot :initarg ,(to-keyword slot) :initform ,value :accessor ,slot))
 		       ('(nil :private)  `(,slot :initarg ,(to-keyword slot) :initform ,value :accessor ,slot))
 		       ('(nil nil)        (setf export-list (append export-list (list slot)))
-			                 `(,slot :initarg ,(to-keyword slot) :initform ,value :accessor ,slot))
+			
+			                 `(,slot :initarg ,(to-keyword slot) :initform ,value))
 		       (otherwise (error
 				   (to-string "Error! Slot options are incorrect... 
                                                expected option of :raw, :private, not kek"))))
 	     into slots-and-values
-	     finally (return slots-and-values))
+	     collect (if (not (gethash slot-key *keys-that-exist-already*))
+		    `(progn
+		      ,(setf (gethash slot-key *keys-that-exist-already*) t)
+		      (declaim (inline ,slot-key))
+		      (defgeneric ,slot-key
+			  (object-map-or-vector)
+			(:generic-function-class inlined-generic-function:inlined-generic-function))))
+	     into setup-interface
+	     collect `(defmethod ,slot-key ((,name ,name)) (slot-value ,name ',slot))
+	     into getters
+	     collect `(defmethod (setf ,slot-key) (value (,name ,name)) (setf (,slot-key ,name) value))
+	     into setters
+	     finally (return (values slots-and-values setup-interface getters setters)))
+
 	
 	(setf slots-and-values (append slots-and-values `((name :initform ',name :reader name :allocation :class))))
 	
@@ -296,10 +308,11 @@
 	`(progn
 	   
 	   ,class
-
+	   ,@setup-interface
+	   ,@getters
+	   ,@setters
 	   ,constructor-code
 	   
-	   ',(setf constructor-args (append constructor-args slots))
 
 	   (defmacro ,name
 	       (&key ,@constructor-args)
@@ -327,8 +340,8 @@
 				       collect (list (to-keyword arg) value))
 				  do (setf code (append code elm))
 				  finally (return code))))
-	   ;deleted export list check to see if still gone
-	   (loop for symbol in ',(list name) do (export symbol))
+					;deleted export list check to see if still gone
+	   (export ',name)
 	   "SUCCESS")))))
 
 
