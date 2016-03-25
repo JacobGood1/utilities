@@ -140,18 +140,13 @@
      ,obj))
 
 (defmacro def-method 
-    (name object args &rest body)
+    (name class args &rest body)
   (if (keywordp name)
-      (let* ((args (setf args (append args (list (list object object))))))
-	(loop for elm in args
-	   when (consp elm)
-	   collect (progn
-		     (finalize-class (second elm))
-		     elm))
+      (let* ((args (setf args (append args (list (list class class))))))
 	`(defmethod ,name 
 	     ,args 
-	   (with-accessors ,(loop for x in (slots-of object) collect (list x x))
-	       ,object
+	   (with-accessors ,(loop for x in (slots-of class) collect (list x (to-keyword x)))
+	       ,class
 	     ,@body)))
       (error "Name of the object MUST be a keyword!")))
 
@@ -203,12 +198,18 @@
 ;      (nil-nil-nil '(nil nil nil)))
 ;  (interpose raw-class-private '(setf :initarg)))
 
+(defparameter *class-slots* (make-hash-table))
+
 (defmacro def-class
     (name &key extends slots constructor super-args dependencies)
 
-  (eval `(defclass ,name ,extends ,(loop for (slot value opt1 opt2) in slots collect slot)))
-  
-  (closer-mop:finalize-inheritance (find-class name))
+  (multiple-value-bind
+	(slots-for-class slots-for-class-slots)
+	(loop for (slot value opt1 opt2) in slots
+	   collect slot into slots
+	   finally (return (values slots slots)))
+    (eval `(defclass ,name ,extends ,slots-for-class))
+    (setf (gethash name *class-slots*) (remove-duplicates (append slots-for-class-slots (flatten (loop for o in extends collect (slots-of o)))))))
 
   (if (and (nil? slots)
 	   (nil? extends))
@@ -284,12 +285,15 @@
                                                expected option of :raw, :private, not kek"))))
 	     into slots-and-values
 	     collect (if (not (gethash slot-key *keys-that-exist-already*))
-		    `(progn
-		      ,(setf (gethash slot-key *keys-that-exist-already*) t)
-		      (declaim (inline ,slot-key))
-		      (defgeneric ,slot-key
-			  (object-map-or-vector)
-			(:generic-function-class inlined-generic-function:inlined-generic-function))))
+			 `(progn
+			    ,(setf (gethash slot-key *keys-that-exist-already*) t)
+			    (declaim (inline ,slot-key))
+			    (defgeneric (setf ,slot-key)
+				(value object-map-or-vector)
+			      (:generic-function-class inlined-generic-function:inlined-generic-function))
+			    (defgeneric ,slot-key
+				(object-map-or-vector)
+			      (:generic-function-class inlined-generic-function:inlined-generic-function))))
 	     into setup-interface
 	     collect `(defmethod ,slot-key ((,name ,name)) (slot-value ,name ',slot))
 	     into getters
@@ -484,9 +488,14 @@
 				   (defgeneric ,key
 				       (object-map-or-vector)
 				     (:generic-function-class inlined-generic-function:inlined-generic-function))
-				   (defmethod ,key ((hash hash-table)) (gethash ,key hash))))))))
-	 `(progn ,@generate-keyword-functions
-		 ,map)))
+				   (defmethod ,key ((hash hash-table)) (gethash ,key hash))))
+			      `(defmethod ,key ((hash hash-table)) (gethash ,key hash))))))
+    (locally
+    (declare #+sbcl(sb-ext:muffle-conditions sb-kernel:redefinition-warning))
+  `(handler-bind
+      (#+sbcl(sb-kernel:redefinition-warning #'muffle-warning))
+     (progn ,@generate-keyword-functions
+		 ,map)))))
 
 ;;
 ;NOTHING GOES PAST THIS.
