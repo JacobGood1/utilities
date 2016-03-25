@@ -245,16 +245,13 @@
   (setf extends (append extends '(printer-base)))
  
   (let* ((slots-and-values slots)
-	 (slots (slots-of name))
+	 
 	 (constructor-code nil)
 	 (constructor-args (first (rest constructor)))
 	 (constructor-requirements constructor-args)
 	 (constructor-body (cddr constructor)))
     
-    (loop for arg in constructor-args
-       do (loop for slot in slots
-	     when (eq slot arg)
-	     do (error (format nil "The slot: ~A and constructor arguement: ~A should not have the same symbol!" slot arg))))
+    
 
     (setf constructor-code (if constructor
 			       `(defmethod initialize-instance
