@@ -142,7 +142,7 @@
 (defmacro def-method 
     (name class args &rest body)
   (if (keywordp name)
-      (let* ((args (setf args (append args (list (list class class))))))
+      (let* ((args (setf args (append (list (list class class)) args))))
 	`(defmethod ,name 
 	     ,args 
 	   (with-accessors ,(loop for x in (slots-of class) collect (list x (to-keyword x)))
@@ -202,14 +202,18 @@
 
 (defmacro def-class
     (name &key extends slots constructor super-args dependencies)
+  ;(eval `(defclass ,name ,extends ,slots-for-class)
+  (eval `(defclass ,name ,extends ,(loop for (slot value opt1 opt2) in slots collect slot)))
+  
+  (closer-mop:finalize-inheritance (find-class name))
 
-  (multiple-value-bind
-	(slots-for-class slots-for-class-slots)
-	(loop for (slot value opt1 opt2) in slots
-	   collect slot into slots
-	   finally (return (values slots slots)))
-    (eval `(defclass ,name ,extends ,slots-for-class))
-    (setf (gethash name *class-slots*) (remove-duplicates (append slots-for-class-slots (flatten (loop for o in extends collect (slots-of o)))))))
+  ;(multiple-value-bind
+;	(slots-for-class slots-for-class-slots)
+;	(loop for (slot value opt1 opt2) in slots
+;	   collect slot into slots
+;	   finally (return (values slots slots)))
+ ;   (eval `(defclass ,name ,extends ,slots-for-class))
+  ;  (setf (gethash name *class-slots*) (remove-duplicates (append slots-for-class-slots (flatten (loop for o in extends collect (slots-of o)))))))
 
   (if (and (nil? slots)
 	   (nil? extends))
@@ -254,13 +258,13 @@
     
     
 
-    (setf constructor-code (if constructor
-			       `(defmethod initialize-instance
-				    :after
-				  ((,name ,name) &key ,@constructor-args) 
-				  ,@constructor-body
-				  (when (next-method-p)
-				    ,(if super-args `(call-next-method ,name ,@super-args) `(call-next-method ,name))))))
+    (setf constructor-code 
+	  `(defmethod initialize-instance
+	       :after
+	     ((,name ,name) &key ,@constructor-args) 
+	     ,@constructor-body
+	     (when (next-method-p)
+	       ,(if super-args `(call-next-method ,name ,@super-args) `(call-next-method ,name)))))
     
    ;TODO this needs fixing, patterns are a fail for now
     (let* ((class nil)
@@ -340,7 +344,7 @@
 				       when (not (nil? value)) 
 				       collect (list (to-keyword arg) value))
 				  do (setf code (append code elm))
-				  finally (return code))))
+				  finally (return (append code ',super-args)))))
 					;deleted export list check to see if still gone
 	   (export ',name)
 	   "SUCCESS")))))
