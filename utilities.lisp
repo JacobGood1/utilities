@@ -28,6 +28,15 @@
   (princ string *query-io*)
   (read *query-io*))
 
+(defmacro ignore-warnings
+    (&rest code)
+  `(locally
+       (declare #+sbcl(sb-ext:muffle-conditions sb-kernel:redefinition-warning))
+     (declare #+sbcl(sb-ext:muffle-conditions style-warning))
+    (handler-bind
+	 (#+sbcl(sb-kernel:redefinition-warning #'muffle-warning))
+       ,@code)))
+
 (defmacro def-generic (name args) 
   (fmakunbound name) ;makes sure that this can be redifined!
   `(defgeneric ,name 
@@ -157,34 +166,6 @@
 
  ;;;!!! code for dependency initialization, conform it to the new system!
 
-;(let ((missing-deps (make-hash-table))
-;      (mixins-that-need-deps '()))
-;  
-;  (loop for mixin in extends 
-;     when (gethash mixin *mixins*)
-;     do (loop for dep in (fetch *mixin-dependencies* mixin)
-;	   do (if-not (in? (slots-of name) dep) 
-;		      (if (gethash mixin missing-deps)
-;			  (setf (gethash mixin missing-deps) (remove-duplicates (cons dep (gethash mixin missing-deps))))
-;			  (progn
-;			    (setf mixins-that-need-deps (cons mixin mixins-that-need-deps)) 
-;			    (setf (gethash mixin missing-deps) (cons dep '())))))))
-; 
-;  (if mixins-that-need-deps
-;      (error (loop with error-string = "" 
-;		for mixin in mixins-that-need-deps 
-;		do (setf error-string 
-;			 (concatenate 'string 
-;				      error-string 
-;				      (to-string "~%" 
-;						 "mixin: " 
-;						 mixin 
-;						 " depends on "
-;						 (fetch missing-deps mixin)
-;						 " which is absent from: "
-;						 name))) 
-;		finally (return error-string)))))
-
 ;;temporarily creating a new implimentation
 ;;TODO remove inlining, make raw slots instead
 
@@ -199,10 +180,12 @@
 ;  (interpose raw-class-private '(setf :initarg)))
 
 (defparameter *class-slots* (make-hash-table))
+(defparameter *super-args* (make-hash-table))
+(defparameter *hierarchy* (make-hash-table))
 
 (defmacro def-class
-    (name &key extends slots constructor super-args dependencies)
-  ;(eval `(defclass ,name ,extends ,slots-for-class)
+    (name &key extends slots constructor dependencies)
+  
   (eval `(defclass ,name ,extends ,(loop for (slot value opt1 opt2) in slots collect slot)))
   
   (closer-mop:finalize-inheritance (find-class name))
@@ -220,12 +203,16 @@
       (warn (to-string name " has no slots...")))
 
   (if constructor
-      (if (eq (first constructor) 'lambda)
-	  nil
-	  (error "constructor must be a lambda expression")))
+      (progn (if (eq (first constructor) 'lambda)
+		 nil
+		 (error "constructor must be a lambda expression"))
+	     (setf (gethash name *super-args*) (second constructor))))
 
   (if dependencies
       (setf (gethash name *class-dependencies*) dependencies))
+  
+  (if extends
+      (setf (gethash name *hierarchy*) extends))
   
   (loop
      with objs-with-deps = (loop
@@ -250,21 +237,82 @@
   (setf extends (append extends '(printer-base)))
  
   (let* ((slots-and-values slots)
-	 
 	 (constructor-code nil)
-	 (constructor-args (first (rest constructor)))
+	 (hierarchy (find-hierarchy name))
+	 (all-slots (-> (loop
+			   for class in hierarchy
+			   collect (slots-of class))
+		      (append slots)
+		      flatten))
+	 (constructor-args (append (-> (loop
+					  for obj in hierarchy
+					  when (not (eq obj 'printer-base))
+					  collect (loop for slot in (gethash obj *super-args*)
+						     collect slot))
+				     flatten)
+				   (first (rest constructor))))
 	 (constructor-requirements constructor-args)
 	 (constructor-body (cddr constructor)))
-    
-    
 
+    ;warn user when the constructor arguements from various classes are shadowing each other
+    (loop
+       with inner-counter     = 0
+       with outer-counter     = 0
+       with current-arg       = nil
+       with current-inner-arg = nil
+       with already-warned    = '()
+       while (< outer-counter (length constructor-args))
+       do (progn
+	    (setf current-arg (elt constructor-args outer-counter))
+	    (loop
+	       while (< inner-counter (length constructor-args))
+	       do (progn
+		    (setf current-inner-arg (elt constructor-args inner-counter))
+		    (if (and (eq current-arg current-inner-arg)
+			     (not (= inner-counter outer-counter)))
+			(if-not (in? already-warned current-inner-arg)
+				(progn (warn (to-string "You are shadowing constructor arguement: " current-inner-arg))
+				       (setf already-warned (append already-warned (list current-inner-arg))))))
+		    (setf inner-counter (1+ inner-counter))))
+	    (setf outer-counter (1+ outer-counter))
+	    (setf inner-counter 0)))
+
+    ;warn user when slots from various classes are shadowing each other
+    (loop
+       with inner-counter     = 0
+       with outer-counter     = 0
+       with current-arg       = nil
+       with current-inner-arg = nil
+       with already-warned    = '()
+       while (< outer-counter (length all-slots))
+       do (progn
+	    (setf current-arg (elt all-slots outer-counter))
+	    (loop
+	       while (< inner-counter (length all-slots))
+	       do (progn
+		    (setf current-inner-arg (elt all-slots inner-counter))
+		    (if (and (eq current-arg current-inner-arg)
+			     (not (= inner-counter outer-counter)))
+			(if-not (in? already-warned current-inner-arg)
+				(progn (warn (to-string "You are shadowing slot "
+							current-inner-arg
+							" with another slot "
+							current-inner-arg))
+				       (setf already-warned (append already-warned (list current-inner-arg))))))
+		    (setf inner-counter (1+ inner-counter))))
+	    (setf outer-counter (1+ outer-counter))
+	    (setf inner-counter 0)))
+    
+    ;get rid of duplicates in the constructor args, all of the supers wil share the same arguement
+    (setf constructor-args (remove-duplicates constructor-args))
+   
     (setf constructor-code 
 	  `(defmethod initialize-instance
 	       :after
 	     ((,name ,name) &key ,@constructor-args) 
 	     ,@constructor-body
 	     (when (next-method-p)
-	       ,(if super-args `(call-next-method ,name ,@super-args) `(call-next-method ,name)))))
+	       `(call-next-method))))
     
    ;TODO this needs fixing, patterns are a fail for now
     (let* ((class nil)
@@ -310,44 +358,46 @@
 	
 	(setf class `(defclass ,name ,extends ,slots-and-values))
 	
-	`(progn
-	   
-	   ,class
-	   ;,@setup-interface
-	   ;,@getters
-	   ;,@setters
-	   ,constructor-code
-	   
-
-	   (defmacro ,name
-	       (&key ,@constructor-args)
-	     
-	     (if ',dependencies
-		 (error "This class has dependencies, it cannot be instantiated directly"))
-	     
-	     (if ',constructor-requirements
-		 (if-not (and ,@constructor-requirements)
-			 (error (format nil "Please provide the following arguements for the constructor: ~A"
-					(loop for arg in ',constructor-requirements
-					   collect (loop for a in ',constructor-args
-						      when (eq a arg)
-						      return arg))))))
-	     `(make-instance ',',name
-			     ,@(loop
-				  with code = '()
-				  for elm in
-				    (loop
-				       for (arg value) in (partition
-							   (interleave ',constructor-args
-								       (list ,@constructor-args))
-							   2)
-				       when (not (nil? value)) 
-				       collect (list (to-keyword arg) value))
-				  do (setf code (append code elm))
-				  finally (return (append code ',super-args)))))
+	`(ignore-warnings
+	  (progn
+	    ,class
+					;,@setup-interface
+					;,@getters
+					;,@setters
+	    ,constructor-code
+	    
+	    
+	    (defmacro ,name
+		(&key ,@constructor-args)
+	      
+	      (if ',dependencies
+		  (error "This class has dependencies, it cannot be instantiated directly"))
+	      
+	      (if ',constructor-requirements
+		  (if-not (and ,@constructor-requirements)
+			  (error (format nil "Please provide the following arguements for the constructor: ~A"
+					 (loop
+					    for arg in ',constructor-requirements
+					    collect (loop
+						       for a in ',constructor-args
+						       when (eq a arg)
+						       return arg))))))
+	      `(make-instance ',',name
+			      ,@(loop
+				   with code = '()
+				   for elm in
+				     (loop
+					for (arg value) in (partition
+							    (interleave ',constructor-args
+									(list ,@constructor-args))
+							    2)
+					when (not (nil? value)) 
+					collect (list (to-keyword arg) value))
+				   do (setf code (append code elm))
+				   finally (return code))))
 					;deleted export list check to see if still gone
-	   (export ',name)
-	   "SUCCESS")))))
+	    (export ',name)
+	    "SUCCESS"))))))
 
 
 
@@ -474,6 +524,7 @@
   `(defmacro ,name ,args ,@body))
 
 
+
 (defmacro make-map (&rest args)
   (let* ((map (make-hash-table))
 	 (args (loop 
@@ -486,11 +537,11 @@
 		  collect (if (keywordp key)
 			    `(defmethod ,key ((hash hash-table)) (gethash ,key hash))))))
     (locally
-    (declare #+sbcl(sb-ext:muffle-conditions sb-kernel:redefinition-warning))
-  `(handler-bind
-      (#+sbcl(sb-kernel:redefinition-warning #'muffle-warning))
-     (progn ,@generate-keyword-functions
-		 ,map)))))
+	(declare #+sbcl(sb-ext:muffle-conditions sb-kernel:redefinition-warning))
+      `(handler-bind
+	   (#+sbcl(sb-kernel:redefinition-warning #'muffle-warning))
+	 (progn ,@generate-keyword-functions
+		,map)))))
 
 ;;
 ;NOTHING GOES PAST THIS.

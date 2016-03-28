@@ -93,7 +93,10 @@
 		      (cons source acc))))))
       (if source (rec source nil) nil)))
   
-
+(defun find-hierarchy
+    (class)
+  (flatten (loop for c in (gethash class *hierarchy*)
+	      collect (list c (find-hierarchy c)))))
 
  ;TODO need to make first work on every seqable structure!
 (defgeneric 1st (seq))
@@ -287,31 +290,26 @@
 				    collect (funcall slot object)))
 		     2)))
 
-(defgeneric attach (coll &optional key value))
+(defgeneric attach (coll &rest vals))
 
-(defmethod attach ((coll hash-table) &optional key value)
-  (if (not (and key value))
-      (error "A value and key must be supplied to the method attach when invoked on a map")
-      (setf (gethash key coll) 
-	    value)))
+(defmethod attach ((coll hash-table) &rest vals)
+  (loop
+     for (key value) in (partition vals 2)
+     do (if (nil? value)
+	    (error "A value and key must be supplied to the method attach when invoked on a map")
+	    (setf (gethash key coll) value)))
+  coll) 
   
-(defmethod attach ((coll vector) &optional value key)
-  (cond ((and value key)
-	 (error "attach takes 2 arguements when applied to vectors, not 3"))
-	((nil? value)
-	 (error "A value must be supplied to the method attach"))
-	(:default
-	 (vector-push-extend value coll))))
+(defmethod attach ((coll vector) &rest vals)
+  (loop for value in vals
+     do (vector-push-extend value coll))
+  coll)
 
-(defmethod attach ((coll cons) &optional value pos)
-  (cond ((nil? value) 
-	 (error "A value must be supplied to the method attach"))
-	((and value pos)
-	 (push value (cdr (nthcdr pos coll)))
-	  coll)
-	(:default
-	 (push value (cdr (nthcdr 0 coll)))
-	    coll)))
+(defmethod attach ((coll cons) &rest vals)
+  (loop
+     for val in vals
+     do (setf coll (cons val coll)))
+  coll)
 
 (declaim (inline list?))
 (defun list?
