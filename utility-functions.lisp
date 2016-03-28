@@ -120,23 +120,9 @@
 (defparameter *keys-that-exist-already* (make-hash-table))
 ;TODO test to see if slots of is working right with methods and inheritance
 
-;(defun slots-of
-;    (class)
-;  (gethash class *class-slots*))
-
 (defun slots-of
     (class)
-  (if (not (nil? class))
-      (let ((deps (append (gethash class *class-dependencies*) (list class))))
-	(remove-duplicates (flatten (loop for class in deps
-				       collect (loop for slot in (closer-mop:class-slots (find-class class))
-						  collect (closer-mop:slot-definition-name slot))))))))
-
-
-      
-	
-	
-	
+  (gethash class *class-slots*))
 
 (defun finalize-class
     (class)

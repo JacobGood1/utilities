@@ -151,7 +151,7 @@
 (defmacro def-method 
     (name class args &rest body)
   (if (keywordp name)
-      (let* ((args (setf args (append (list (list class class)) args))))
+      (let* ((args (setf args (append args (list (list class class))))))
 	`(defmethod ,name 
 	     ,args 
 	   (with-accessors ,(loop for x in (slots-of class) collect (list x (to-keyword x)))
@@ -184,19 +184,23 @@
 (defparameter *hierarchy* (make-hash-table))
 
 (defmacro def-class
+<<<<<<< HEAD
     (name &key extends slots constructor dependencies)
   
   (eval `(defclass ,name ,extends ,(loop for (slot value opt1 opt2) in slots collect slot)))
   
   (closer-mop:finalize-inheritance (find-class name))
+=======
+    (name &key extends slots constructor super-args dependencies)
+>>>>>>> parent of f524d57... can call supers now
 
-  ;(multiple-value-bind
-;	(slots-for-class slots-for-class-slots)
-;	(loop for (slot value opt1 opt2) in slots
-;	   collect slot into slots
-;	   finally (return (values slots slots)))
- ;   (eval `(defclass ,name ,extends ,slots-for-class))
-  ;  (setf (gethash name *class-slots*) (remove-duplicates (append slots-for-class-slots (flatten (loop for o in extends collect (slots-of o)))))))
+  (multiple-value-bind
+	(slots-for-class slots-for-class-slots)
+	(loop for (slot value opt1 opt2) in slots
+	   collect slot into slots
+	   finally (return (values slots slots)))
+    (eval `(defclass ,name ,extends ,slots-for-class))
+    (setf (gethash name *class-slots*) (remove-duplicates (append slots-for-class-slots (flatten (loop for o in extends collect (slots-of o)))))))
 
   (if (and (nil? slots)
 	   (nil? extends))
@@ -254,6 +258,7 @@
 	 (constructor-requirements constructor-args)
 	 (constructor-body (cddr constructor)))
 
+<<<<<<< HEAD
     ;warn user when the constructor arguements from various classes are shadowing each other
     (loop
        with inner-counter     = 0
@@ -313,6 +318,15 @@
 	     ,@constructor-body
 	     (when (next-method-p)
 	       `(call-next-method))))
+=======
+    (setf constructor-code (if constructor
+			       `(defmethod initialize-instance
+				    :after
+				  ((,name ,name) &key ,@constructor-args) 
+				  ,@constructor-body
+				  (when (next-method-p)
+				    ,(if super-args `(call-next-method ,name ,@super-args) `(call-next-method ,name))))))
+>>>>>>> parent of f524d57... can call supers now
     
    ;TODO this needs fixing, patterns are a fail for now
     (let* ((class nil)
@@ -358,6 +372,7 @@
 	
 	(setf class `(defclass ,name ,extends ,slots-and-values))
 	
+<<<<<<< HEAD
 	`(ignore-warnings
 	  (progn
 	    ,class
@@ -395,6 +410,43 @@
 					collect (list (to-keyword arg) value))
 				   do (setf code (append code elm))
 				   finally (return code))))
+=======
+	`(progn
+	   
+	   ,class
+	   ;,@setup-interface
+	   ;,@getters
+	   ;,@setters
+	   ,constructor-code
+	   
+
+	   (defmacro ,name
+	       (&key ,@constructor-args)
+	     
+	     (if ',dependencies
+		 (error "This class has dependencies, it cannot be instantiated directly"))
+	     
+	     (if ',constructor-requirements
+		 (if-not (and ,@constructor-requirements)
+			 (error (format nil "Please provide the following arguements for the constructor: ~A"
+					(loop for arg in ',constructor-requirements
+					   collect (loop for a in ',constructor-args
+						      when (eq a arg)
+						      return arg))))))
+	     `(make-instance ',',name
+			     ,@(loop
+				  with code = '()
+				  for elm in
+				    (loop
+				       for (arg value) in (partition
+							   (interleave ',constructor-args
+								       (list ,@constructor-args))
+							   2)
+				       when (not (nil? value)) 
+				       collect (list (to-keyword arg) value))
+				  do (setf code (append code elm))
+				  finally (return code))))
+>>>>>>> parent of f524d57... can call supers now
 					;deleted export list check to see if still gone
 	    (export ',name)
 	    "SUCCESS"))))))
