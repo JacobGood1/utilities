@@ -188,24 +188,15 @@
 (defparameter *class* (make-hash-table))
 (defparameter *super-args* (make-hash-table))
 
-(defmacro def-class2 (name &key extends slots constructor dependencies)
-  `(defclass ,name ,extends ,slots))
 (defmacro def-class
     (name &key extends slots constructor dependencies)
-  ;(setf (gethash name *class-slots*) (append slots ))
+
   (eval `(defclass ,name ,extends ,(loop for (slot value opt1 opt2) in slots collect slot)))
     
   (closer-mop:finalize-inheritance (find-class name))
 
   (setf (gethash name *class*) t)
-					;(multiple-value-bind
-					;	(slots-for-class slots-for-class-slots)
-					;	(loop for (slot value opt1 opt2) in slots
-					;	   collect slot into slots
-					;	   finally (return (values slots slots)))
-					;   (eval `(defclass ,name ,extends ,slots-for-class))
-					;  (setf (gethash name *class-slots*) (remove-duplicates (append slots-for-class-slots (flatten (loop for o in extends collect (slots-of o)))))))
-
+					
 
   (if (and (nil? slots)
 	   (nil? extends))
@@ -247,11 +238,9 @@
   (let* ((slots-and-values slots)
 	 (constructor-code nil)
 	 (hierarchy (find-hierarchy name))
-	 (all-slots (-> (loop
-			   for class in hierarchy
-			   collect (slots-of class))
-		      (append slots)
-		      ))
+	 (sub-classes (sub-classes name))
+	 (all-classes-being-mixed (append hierarchy (list name)))
+	 
 	 (constructor-args (append (-> (loop
 					  for obj in hierarchy
 					  when (not (eq obj 'printer-base))
@@ -262,57 +251,80 @@
 	 (constructor-requirements constructor-args)
 	 (constructor-body (cddr constructor)))
 
+    (loop
+       for sub-class in sub-classes
+       do (progn
+	    (loop
+	       for sub-slot in (slots-of sub-class)
+	       do (loop
+		     for (slot _) in slots
+		     do (if (eq slot sub-slot)
+			    (warn (to-string "The redifinition of "
+					     name
+					     " is now shadowing slot "
+					     slot
+					     " in the subclass "
+					     sub-class)))))
+	    (loop
+	       for sub-arg in (gethash sub-class *super-args*)
+	       do (loop
+		     for arg in (gethash name *super-args*)
+		     do (if (eq sub-arg arg)
+			      (warn (to-string "The redifinition of "
+					       name
+					       " is now shadowing the constructor arguement "
+					       arg
+					       " in the subclass "
+					       sub-class)))))))
+
+  ;warn user when the constructor arguements from various classes are shadowing each other
+    
+    (loop
+       with already-warned = '()
+       for current-class in all-classes-being-mixed
+       do (let* ((current-args (gethash current-class *super-args*))
+		 (current-slots (slots-of current-class)))
+	    (loop
+	       for class in all-classes-being-mixed
+	       when (and (not (eq class current-class))
+			 (not (in? already-warned class)))
+	       do (loop
+		     with slots = (slots-of class)
+		     for current-arg in current-args
+		     for current-slot in current-slots
+		     do (loop
+			   for slot in slots
+			   do (if (and (eq slot current-slot)
+				       (not (eq slot 'name)))
+				  (warn (to-string "the classes "
+						   current-class
+						   " and "
+						   class
+						   " are shadowing each other's slot: "
+						   slot))))))
+	    (loop
+	       for class in all-classes-being-mixed
+	       when (and (not (eq class current-class))
+			 (not (in? already-warned class)))
+	       do (loop
+		     with args = (gethash class *super-args*)
+		     for current-arg in current-args
+		     for current-slot in current-slots
+		     do (loop
+			  for arg in args
+			   do (if (eq arg current-arg)
+				  (warn (to-string "the classes "
+						   current-class
+						   " and "
+						   class
+						   " are shadowing each other's constructor arg: "
+						   arg))))))
+	    (setf already-warned (append already-warned (list current-class)))))
     
 
-					;warn user when the constructor arguements from various classes are shadowing each other
-    (loop
-       with inner-counter     = 0
-       with outer-counter     = 0
-       with current-arg       = nil
-       with current-inner-arg = nil
-       with already-warned    = '()
-       while (< outer-counter (length constructor-args))
-       do (progn
-	    (setf current-arg (elt constructor-args outer-counter))
-	    (loop
-	       while (< inner-counter (length constructor-args))
-	       do (progn
-		    (setf current-inner-arg (elt constructor-args inner-counter))
-		    (if (and (eq current-arg current-inner-arg)
-			     (not (= inner-counter outer-counter)))
-			(if-not (in? already-warned current-inner-arg)
-				(progn (warn (to-string "You are shadowing constructor arguement: " current-inner-arg))
-				       (setf already-warned (append already-warned (list current-inner-arg))))))
-		    (setf inner-counter (1+ inner-counter))))
-	    (setf outer-counter (1+ outer-counter))
-	    (setf inner-counter 0)))
-
 					;warn user when slots from various classes are shadowing each other
-    (loop
-       with inner-counter     = 0
-       with outer-counter     = 0
-       with current-arg       = nil
-       with current-inner-arg = nil
-       with already-warned    = '()
-       while (< outer-counter (length all-slots))
-       do (progn
-	    (setf current-arg (elt all-slots outer-counter))
-	    (loop
-	       while (< inner-counter (length all-slots))
-	       do (progn
-		    (setf current-inner-arg (elt all-slots inner-counter))
-		    (if (and (eq current-arg current-inner-arg)
-			     (not (= inner-counter outer-counter)))
-			(if-not (in? already-warned current-inner-arg)
-				(progn (warn (to-string "You are shadowing slot "
-							current-inner-arg
-							" with another slot "
-							current-inner-arg))
-				       (setf already-warned (append already-warned (list current-inner-arg))))))
-		    (setf inner-counter (1+ inner-counter))))
-	    (setf outer-counter (1+ outer-counter))
-	    (setf inner-counter 0)))
-					;get rid of duplicates in the constructor args, all of the supers will share the same arguement
+    
+    ;get rid of duplicates in the constructor args, all of the supers will share the same arguement
     (setf constructor-args (remove-duplicates constructor-args))
     
     (setf constructor-code 

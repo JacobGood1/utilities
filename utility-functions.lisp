@@ -133,7 +133,13 @@
 						  collect (closer-mop:slot-definition-name slot))))))))
 
 
-      
+(defun super-classes
+    (class)
+  (mapcar #'class-name (closer-mop:class-direct-superclasses (find-class class))))
+
+(defun sub-classes
+    (class)
+  (mapcar #'class-name (closer-mop:class-direct-subclasses (find-class class))))     
 	
 	
 	
