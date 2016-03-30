@@ -127,7 +127,7 @@
 (defun slots-of
     (class)
   (if (not (nil? class))
-      (let ((deps (append (gethash class *class-dependencies*) (list class))))
+      (let* ((deps (append (gethash class *class-dependencies*) (list class))))
 	(remove-duplicates (flatten (loop for class in deps
 				       collect (loop for slot in (closer-mop:class-slots (find-class class))
 						  collect (closer-mop:slot-definition-name slot))))))))
