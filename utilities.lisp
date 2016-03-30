@@ -325,8 +325,7 @@
 					;warn user when slots from various classes are shadowing each other
     
     ;get rid of duplicates in the constructor args, all of the supers will share the same arguement
-    (setf constructor-args (remove-duplicates constructor-args))
-    
+    (setf constructor-args (mapcar #'to-symbol (remove-duplicates (mapcar #'to-keyword constructor-args))))
     (setf constructor-code 
 	  `(defmethod initialize-instance
 	       :after
