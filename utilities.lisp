@@ -191,7 +191,7 @@
 
 (defmacro def-class
     (name &key extends slots constructor dependencies)
-  
+   
   (let ((def-class-return (eval `(defclass ,name ,extends ,(loop for (slot value opt1 opt2) in slots collect slot)))))
     
     (closer-mop:finalize-inheritance (find-class name))

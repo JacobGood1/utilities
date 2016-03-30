@@ -120,9 +120,23 @@
 (defparameter *keys-that-exist-already* (make-hash-table))
 ;TODO test to see if slots of is working right with methods and inheritance
 
+;(defun slots-of
+;    (class)
+;  (gethash class *class-slots*))
+
 (defun slots-of
     (class)
-  (gethash class *class-slots*))
+  (if (not (nil? class))
+      (let ((deps (append (gethash class *class-dependencies*) (list class))))
+	(remove-duplicates (flatten (loop for class in deps
+				       collect (loop for slot in (closer-mop:class-slots (find-class class))
+						  collect (closer-mop:slot-definition-name slot))))))))
+
+
+      
+	
+	
+	
 
 (defun finalize-class
     (class)
@@ -287,7 +301,7 @@
 		(setf obj-string (concatenate 'string obj-string (to-string "~" (+ 4 indentation-level) "@a: ~a~%")))
 		(setf args (append args (list slot value))))))
      finally (return (values (to-string obj-string (format nil (to-string "~" indentation-level "a") "") "]~%")
-			     args))))
+			     args)))) 
 
 
 ;print-object makes all objects of the type printer-base print more readable
