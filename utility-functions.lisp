@@ -286,8 +286,9 @@
      when (not (eq slot 'name))  
      do (let* ((value (funcall (to-keyword slot) object)))
 	  
-	  (if (not (in? '(float integer fixnum t nil boolean bit (INTEGER 0 4611686018427387903))
-			(type-of value)))
+	  (if (and (not (in? '(single-float ratio integer fixnum t nil null boolean bit)
+			     (class-name (class-of value))))
+		   (not (eq value t)))
 	      (progn
 		
 		(setf obj-string (concatenate 'string obj-string

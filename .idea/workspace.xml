@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="5fb30ff2-7311-4b94-b88a-b38a047032f2" name="Default" comment="objects pretty printing red style&#10;all kinds of object updates&#10;attach is now a good multimethod">
+    <list default="true" id="5fb30ff2-7311-4b94-b88a-b38a047032f2" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/utility-functions.lisp" afterPath="$PROJECT_DIR$/utility-functions.lisp" />
     </list>
     <ignored path="utilities.iws" />
     <ignored path=".idea/workspace.xml" />
@@ -37,8 +38,8 @@
       <file leaf-file-name="utility-functions.lisp" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/utility-functions.lisp">
           <provider selected="true" editor-type-id="text-editor">
-            <state vertical-scroll-proportion="0.25412542">
-              <caret line="41" column="10" selection-start-line="41" selection-start-column="10" selection-end-line="41" selection-end-column="10" />
+            <state vertical-scroll-proportion="0.7260726">
+              <caret line="55" column="0" selection-start-line="55" selection-start-column="0" selection-end-line="55" selection-end-column="0" />
               <folding />
             </state>
           </provider>
@@ -233,7 +234,13 @@
       <option name="project" value="LOCAL" />
       <updated>1459298673831</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="objects pretty printing red style&#10;all kinds of object updates&#10;attach is now a good multimethod">
+      <created>1459298693474</created>
+      <option name="number" value="00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1459298693474</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
@@ -351,8 +358,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/utility-functions.lisp">
       <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="0.25412542">
-          <caret line="41" column="10" selection-start-line="41" selection-start-column="10" selection-end-line="41" selection-end-column="10" />
+        <state vertical-scroll-proportion="0.7260726">
+          <caret line="55" column="0" selection-start-line="55" selection-start-column="0" selection-end-line="55" selection-end-column="0" />
           <folding />
         </state>
       </provider>
