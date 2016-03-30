@@ -274,21 +274,39 @@
 ;;
 ;printer-base is an object that ecery object derives from
   ;it will ensure that all object created by def-class are printed much readable
-  (defclass printer-base () ())
+(defclass printer-base () ())
+
+(defun print-it
+    (object indentation-level)
+  (loop
+     with obj-string = (to-string "object! " (name object) " [~%")
+       with args = '()
+     for slot in (slots-of (name object))
+       
+     when (not (eq slot 'name))  
+     do (let* ((value (funcall (to-keyword slot) object)))
+	  
+	  (if (not (in? '(float integer fixnum t nil boolean bit (INTEGER 0 4611686018427387903))
+			(type-of value)))
+	      (progn
+		
+		(setf obj-string (concatenate 'string obj-string
+					      (to-string "~"
+							 (+ 4 indentation-level)
+							 "@a: "
+							 (print-it value
+								   (+ 4 indentation-level)))))
+		(setf args (append args (list slot (multiple-value-bind (_ args) (print-it value indentation-level) args)))))
+	      (progn
+		(setf obj-string (concatenate 'string obj-string (to-string "~" (+ 4 indentation-level) "@a: ~a~%")))
+		(setf args (append args (list slot value))))))
+     finally (return (values (to-string obj-string (format nil (to-string "~" indentation-level "a") "") "]~%")
+			     args))))
+
 
 ;print-object makes all objects of the type printer-base print more readable
 (defmethod print-object ((object printer-base) stream)
-  (format stream
-	  "[object: ~A slots: ~A]"
-	  (name object)
-	  (partition (interleave (loop for slot in (slots-of (name object))
-				    when (not (eq slot 'name))
-				    collect slot)
-				 (loop
-				    for slot in (mapcar #'to-keyword (slots-of (name object)))
-				    when (not (eq slot :name))
-				    collect (funcall slot object)))
-		     2)))
+  (apply #'format stream (multiple-value-bind (string args) (print-it object 0) `(,string ,@(flatten args)))))
 
 (defgeneric attach (coll &rest vals))
 
