@@ -395,14 +395,11 @@
 		    (error "This class has dependencies, it cannot be instantiated directly"))
 		
 		(if ',constructor-requirements
-		    (if-not (and ,@constructor-requirements)
-			    (error (format nil "Please provide the following arguements for the constructor: ~A"
-					   (loop
-					      for arg in ',constructor-requirements
-					      collect (loop
-							 for a in ',constructor-args
-							 when (eq a arg)
-							 return arg))))))
+		    (loop
+		       for arg in ,constructor-requirements
+		       do (if (eq nil arg)
+			      (warn (format nil "constructor arguement: ~a, is nil" arg)))))
+		
 		(make-instance ',name
 			       ,@(loop
 				    with code = '()
