@@ -286,7 +286,7 @@
      when (not (eq slot 'name))  
      do (let* ((value (funcall (to-keyword slot) object)))
 	  
-	  (if (and (not (in? '(single-float ratio integer fixnum t nil null boolean bit simple-vector)
+	  (if (and (not (in? '(single-float ratio integer fixnum t null boolean bit simple-vector vector hash-table)
 			     (class-name (class-of value))))
 		   (not (eq value t)))
 	      (progn
@@ -300,7 +300,7 @@
 		(setf args (append args (list slot (multiple-value-bind (_ args) (print-it value indentation-level) args)))))
 	      (progn
 		(setf obj-string (concatenate 'string obj-string (to-string "~" (+ 4 indentation-level) "@a: ~a~%")))
-		(setf args (append args (list slot value))))))
+		(setf args (append args (list slot (if (nil? value) 'null value)))))))
      finally (return (values (to-string obj-string (format nil (to-string "~" indentation-level "a") "") "]~%")
 			     args)))) 
 

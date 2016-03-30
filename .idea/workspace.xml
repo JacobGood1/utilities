@@ -38,8 +38,8 @@
       <file leaf-file-name="utility-functions.lisp" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/utility-functions.lisp">
           <provider selected="true" editor-type-id="text-editor">
-            <state vertical-scroll-proportion="0.7260726">
-              <caret line="56" column="0" selection-start-line="56" selection-start-column="0" selection-end-line="56" selection-end-column="0" />
+            <state vertical-scroll-proportion="0.21837088">
+              <caret line="274" column="57" selection-start-line="274" selection-start-column="57" selection-end-line="274" selection-end-column="57" />
               <folding />
             </state>
           </provider>
@@ -246,7 +246,13 @@
       <option name="project" value="LOCAL" />
       <updated>1459300137286</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="fixed minor error in pretty printing">
+      <created>1459300964530</created>
+      <option name="number" value="00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1459300964530</updated>
+    </task>
+    <option name="localTasksCounter" value="16" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
@@ -365,8 +371,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/utility-functions.lisp">
       <provider selected="true" editor-type-id="text-editor">
-        <state vertical-scroll-proportion="0.7260726">
-          <caret line="56" column="0" selection-start-line="56" selection-start-column="0" selection-end-line="56" selection-end-column="0" />
+        <state vertical-scroll-proportion="0.21837088">
+          <caret line="274" column="57" selection-start-line="274" selection-start-column="57" selection-end-line="274" selection-end-column="57" />
           <folding />
         </state>
       </provider>
