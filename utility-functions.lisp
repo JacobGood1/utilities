@@ -286,7 +286,7 @@
      when (not (eq slot 'name))  
      do (let* ((value (funcall (to-keyword slot) object)))
 	  
-	  (if (and (not (in? '(single-float ratio integer fixnum t nil null boolean bit)
+	  (if (and (not (in? '(single-float ratio integer fixnum t nil null boolean bit simple-vector)
 			     (class-name (class-of value))))
 		   (not (eq value t)))
 	      (progn
