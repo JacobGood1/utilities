@@ -1,6 +1,6 @@
 ;;;; utilities.lisp
 
-(in-package #:utilities)
+(in-package :utilities)
 
 ;;; "utilities" goes here. Hacks and glory await!
  
