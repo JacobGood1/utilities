@@ -153,7 +153,7 @@
 (defmacro def-method 
     (name class args &rest body)
   (let* ((args (setf args (append (list (list class class)) args))))
-    (closer-mop:finalize-inheritance (find-class class))
+    (closer-mop:ensure-finalized (find-class class))
     `(defmethod ,name 
 	 ,args 
        (with-accessors ,(loop for x in (slots-of class) collect (list x (to-keyword x)))
@@ -231,7 +231,7 @@
   (let* ((slots-and-values slots)
 	 (constructor-code nil)
 	 (hierarchy (find-hierarchy name))
-	 (sub-classes (sub-classes name))
+	 (sub-classes (sub-classes-of name))
 	 (all-classes-being-mixed (append hierarchy (list name)))
 	 
 	 (constructor-args (append (-> (loop
@@ -367,7 +367,7 @@
 	     finally (return (values slots-and-values setup-interface getters setters)))
 
 	
-	(setf slots-and-values (append slots-and-values `((name :initform ',name :reader name :allocation :class))))
+	
 	
 	(setf class `(defclass ,name ,extends ,slots-and-values))
 	

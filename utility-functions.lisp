@@ -133,11 +133,11 @@
 						  collect (closer-mop:slot-definition-name slot))))))))
 
 
-(defun super-classes
+(defun super-classes-of
     (class)
   (mapcar #'class-name (closer-mop:class-direct-superclasses (find-class class))))
 
-(defun sub-classes
+(defun sub-classes-of
     (class)
   (mapcar #'class-name (closer-mop:class-direct-subclasses (find-class class))))     
 	
@@ -285,11 +285,9 @@
 (defun print-it
     (object indentation-level)
   (loop
-     with obj-string = (to-string "object! " (name object) " [~%")
+     with obj-string = (to-string "object! " (class-name (class-of object)) " [~%")
        with args = '()
-     for slot in (slots-of (name object))
-       
-     when (not (eq slot 'name))  
+     for slot in (slots-of (class-name (class-of object)))
      do (let* ((value (funcall (to-keyword slot) object)))
 	  
 	  (if (and (not (in? '(single-float ratio integer fixnum sb-kernel::simple-character-string t null boolean bit simple-vector vector hash-table)
