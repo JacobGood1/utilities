@@ -292,7 +292,7 @@
      when (not (eq slot 'name))  
      do (let* ((value (funcall (to-keyword slot) object)))
 	  
-	  (if (and (not (in? '(single-float ratio integer fixnum t null boolean bit simple-vector vector hash-table)
+	  (if (and (not (in? '(single-float ratio integer fixnum t null boolean bit SB-KERNEL::SIMPLE-CHARACTER-STRING simple-vector vector hash-table)
 			     (class-name (class-of value))))
 		   (not (eq value t)))
 	      (progn
@@ -368,3 +368,5 @@
      for x in list
      do (setf ret (append ret (list x value)))
      finally (return ret)))
+
+

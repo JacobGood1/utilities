@@ -3,14 +3,12 @@
 (in-package #:utilities)
 
 ;;; "utilities" goes here. Hacks and glory await!
-
-
  
 (defmacro var 
-      (&rest vars) 
-    (cons 'progn 
-	  (loop for v in (partition vars 2)  
-	     collect `(defparameter ,@v))))
+    (&rest vars) 
+  (cons 'progn 
+	(loop for v in (partition vars 2)  
+	   collect `(defparameter ,@v))))
 
 (defmacro set! 
     (&rest vars) 
@@ -154,14 +152,13 @@
 
 (defmacro def-method 
     (name class args &rest body)
-  (if (keywordp name)
-      (let* ((args (setf args (append (list (list class class)) args))))
-	`(defmethod ,name 
-	     ,args 
-	   (with-accessors ,(loop for x in (slots-of class) collect (list x (to-keyword x)))
-	       ,class
-	     ,@body)))
-      (error "Name of the object MUST be a keyword!")))
+  (let* ((args (setf args (append (list (list class class)) args))))
+    (closer-mop:finalize-inheritance (find-class class))
+    `(defmethod ,name 
+	 ,args 
+       (with-accessors ,(loop for x in (slots-of class) collect (list x (to-keyword x)))
+	   ,class
+	 ,@body))))
 
 (def-generic fetch (coll item-to-fetch))
 
@@ -183,10 +180,6 @@
 ;      (nil-nil-nil '(nil nil nil)))
 ;  (interpose raw-class-private '(setf :initarg)))
 
-(defparameter *class-slots* (make-hash-table))
-(defparameter *hierarchy* (make-hash-table))
-(defparameter *class* (make-hash-table))
-(defparameter *super-args* (make-hash-table))
 
 (defmacro def-class
     (name &key extends slots constructor dependencies)
@@ -396,7 +389,7 @@
 		
 		(if ',constructor-requirements
 		    (loop
-		       for arg in ,constructor-requirements
+		       for arg in ',constructor-requirements
 		       do (if (eq nil arg)
 			      (warn (format nil "constructor arguement: ~a, is nil" arg)))))
 		
@@ -505,17 +498,7 @@
       collect (list key value)))))
 
 ;create instance struct
-(defmacro new-struct
-	 (type slots-and-values)
-       (let ((ptr (gensym)))
-	   `(let* ((,ptr (cffi:foreign-alloc '(:struct ,type))))
-	      ,(loop for (slot value) in slots-and-values
-		  collect `(cffi:foreign-slot-value ,ptr '(:struct ,type) ',slot)
-		  into foreign-slot-values
-		  collect value
-		  into values
-		  finally (return (append '(setf) (interleave foreign-slot-values values))))
-	      ,ptr)))
+;twerking
 
 
 
@@ -557,7 +540,13 @@
 	 (progn ,@generate-keyword-functions
 		,map)))))
 
-;;
+
+
+
+
+
+
+
 ;NOTHING GOES PAST THIS.
 (export-all-symbols-except nil)
   
