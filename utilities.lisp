@@ -1,6 +1,6 @@
 ;;;; utilities.lisp
 
-(in-package #:utilities)
+(in-package :utilities)
 
 ;;; "utilities" goes here. Hacks and glory await!
 
@@ -396,7 +396,7 @@
 		
 		(if ',constructor-requirements
 		    (loop
-		       for arg in ,constructor-requirements
+		       for arg in ',constructor-requirements
 		       do (if (eq nil arg)
 			      (warn (format nil "constructor arguement: ~a, is nil" arg)))))
 		
