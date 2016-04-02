@@ -533,11 +533,11 @@
   (let* ((map (make-hash-table))
 	 (args (loop 
 		  for (key val) in (partition args 2)
-		  collect (list key (eval val))))
+		  collect (list key val)))
 	 (generate-keyword-functions
 	       (loop
 		  for (key val) in args
-		  do (setf (gethash key map) val)
+		  do (eval `(setf (gethash ,key ,map) ',val))
 		  collect (if (keywordp key)
 			    `(defmethod ,key ((hash hash-table)) (gethash ,key hash))))))
     (locally
@@ -545,7 +545,17 @@
       `(handler-bind
 	   (#+sbcl(sb-kernel:redefinition-warning #'muffle-warning))
 	 (progn ,@generate-keyword-functions
-		,map)))))
+		,(read-from-string
+		  (loop
+		     with form = "{"
+		     with switch = nil
+		     for (key val) in args
+		     do (progn
+			  (if switch
+			      (setf form (concatenate 'string form (to-string ", " key " => " val)))
+			      (setf form (concatenate 'string form (to-string key " => " val))))
+			  (setf switch t))
+		     finally (return (to-string form "}")))))))))
 
 
 

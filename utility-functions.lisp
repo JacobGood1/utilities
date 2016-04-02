@@ -282,6 +282,7 @@
 ;printer-base is an object that ecery object derives from
   ;it will ensure that all object created by def-class are printed much readable
 (defclass printer-base () ())
+(closer-mop:finalize-inheritance (find-class 'printer-base))
 
 (defun print-it
     (object indentation-level)
