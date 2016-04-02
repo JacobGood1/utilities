@@ -44,6 +44,13 @@
     (init &body exps)
   `(arrow-macros:-> ,init ,@exps))
 
+(defgeneric length-of (coll))
+(defmethod length-of ((hash hash-table)) 
+  (loop
+     with counter = 0
+     for key being the hash-keys of hash
+     do (setf counter (+ 1 counter))
+     finally (return counter)))
 
 ;;TODO cleanup overrides when you get better at lisp, there is too much redundant code
 ;;TODO should renaming be possible?
