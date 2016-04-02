@@ -126,6 +126,7 @@
 
 (defun slots-of
     (class)
+  (closer-mop:ensure-finalized (class-of class))
   (if (not (nil? class))
       (let* ((deps (append (gethash class *class-dependencies*) (list class))))
 	(remove-duplicates (flatten (loop for class in deps
