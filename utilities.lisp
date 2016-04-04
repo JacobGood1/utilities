@@ -560,19 +560,6 @@
 			      (setf switch t))
 			 finally (return (to-string form "}"))))))))))
 
-(defun make-vector
-    (dimension &rest args)
-  (let* ((array (make-array dimension :adjustable t :fill-pointer 0)))
-    (loop
-       for arg in args
-       do (setf array (attach array arg)))
-    array))
-
-
-
-
-
-
 ;NOTHING GOES PAST THIS.
 (export-all-symbols-except nil)
   

@@ -292,7 +292,7 @@
      for slot in (slots-of (class-name (class-of object)))
      do (let* ((value (funcall (to-keyword slot) object)))
 	  
-	  (if (and (not (in? '(single-float ratio integer fixnum sb-kernel::simple-character-string t null boolean bit simple-vector vector hash-table)
+	  (if (and (not (in? '(sb-sys:system-area-pointer single-float ratio integer fixnum sb-kernel::simple-character-string t null boolean bit simple-vector vector hash-table)
 			     (class-name (class-of value))))
 		   (not (eq value t)))
 	      (progn
@@ -300,12 +300,12 @@
 		(setf obj-string (concatenate 'string obj-string
 					      (to-string "~"
 							 (+ 4 indentation-level)
-							 "@a: "
+							 "t~a: "
 							 (print-it value
 								   (+ 4 indentation-level)))))
 		(setf args (append args (list slot (multiple-value-bind (_ args) (print-it value indentation-level) args)))))
 	      (progn
-		(setf obj-string (concatenate 'string obj-string (to-string "~" (+ 4 indentation-level) "@a: ~a~%")))
+		(setf obj-string (concatenate 'string obj-string (to-string "~" (+ 4 indentation-level) "t~a: ~a~%")))
 		(setf args (append args (list slot (if (nil? value) 'null value)))))))
      finally (return (values (to-string obj-string (format nil (to-string "~" indentation-level "a") "") "]~%")
 			     args)))) 
@@ -328,13 +328,25 @@
 (defmethod attach ((coll vector) &rest vals)
   (loop for value in vals
      do (vector-push-extend value coll))
-  coll)
+    coll)
 
 (defmethod attach ((coll cons) &rest vals)
   (loop
-     for val in vals
-     do (setf coll (cons val coll)))
+     for i downfrom (1- (length vals)) to 0
+     do (setf coll (cons (elt vals i) coll)))
   coll)
+
+
+(defgeneric detach (coll value))
+
+(defmethod detach
+    ((coll cons) value)
+  (remove value coll :count 1))
+
+(defmethod detach
+    ((coll vector) value)
+  (remove value coll :count 1))
+
 
 (declaim (inline list?))
 (defun list?
@@ -368,3 +380,11 @@
      for x in list
      do (setf ret (append ret (list x value)))
      finally (return ret)))
+
+(defun make-vector
+    (&rest vals)
+  (let ((v (make-array 1 :adjustable t :fill-pointer 0)))
+    (loop
+       for val in vals
+       do (vector-push-extend val v))
+    v))
