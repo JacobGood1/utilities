@@ -545,19 +545,28 @@
       `(handler-bind
 	   (#+sbcl(sb-kernel:redefinition-warning #'muffle-warning))
 	 (progn ,@generate-keyword-functions
-		,(read-from-string
-		  (loop
-		     with form = "{"
-		     with switch = nil
-		     for (key val) in args
-		     do (progn
-			  (if switch
-			      (setf form (concatenate 'string form (to-string ", " key " => " val)))
-			      (setf form (concatenate 'string form (to-string key " => " val))))
-			  (setf switch t))
-		     finally (return (to-string form "}")))))))))
+		
+		,(if (nil? args)
+		     '(make-hash-table)
+		     (read-from-string
+		      (loop
+			 with form = "{"
+			 with switch = nil
+			 for (key val) in args
+			 do (progn
+			      (if switch
+				  (setf form (concatenate 'string form (to-string ", " key " => " val)))
+				  (setf form (concatenate 'string form (to-string key " => " val))))
+			      (setf switch t))
+			 finally (return (to-string form "}"))))))))))
 
-
+(defun make-vector
+    (dimension &rest args)
+  (let* ((array (make-array dimension :adjustable t :fill-pointer 0)))
+    (loop
+       for arg in args
+       do (setf array (attach array arg)))
+    array))
 
 
 
