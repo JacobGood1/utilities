@@ -8,10 +8,10 @@
 	    (tail 0)
 	    (current-position 0)))
 
-(def-method at
-            rebol-block
-            ((pos integer))
-	    (setf current-position pos)
-	    rebol-block)
+;(def-method at
+;            rebol-block
+;            ((pos integer))
+;	    (setf current-position pos)
+;	    rebol-block)
 
 ;test end
