@@ -15,5 +15,8 @@
 	       (:file "globals")
 	       (:file "utility-functions")
 	       (:file "utilities")
+	       (:file "math/point")
+	       (:file "math/line")
+	       (:file "math/vector")
 	       (:file "series-modification-functions")))
 

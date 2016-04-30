@@ -1,0 +1,199 @@
+(in-package :math)
+
+;;TODO change points to be their own objects as well.
+;;a line will store points
+(def-class line
+    :slots ((p1 nil) (p2 nil)))
+
+(defmethod initialize-instance :after
+    ((line line) &key (p1 point) (p2 point))
+  (setf (:p1 line) p1
+	(:p2 line) p2))
+
+(defmethod get-points
+    ((line line))
+  (values (:p1 line)
+	  (:p2 line)))
+
+(defmethod point-line-orientation
+    ((point point) (line line))
+  (let* ((px (:px point))
+	 (py (:py point))
+
+	 (l1-p1 (:p1 line))
+	 (l1-p2 (:p2 line))
+	 
+	 (x1 (:px l1-p1))
+	 (y1 (:py l1-p1))
+	 (x2 (:px l1-p2))
+	 (y2 (:py l1-p2)))
+    [[x2 - x1] * [py - y1] - [y2 - y1] * [px - x1]]))
+
+(defmethod line-shadow?
+    ((line-1 line) (line-2 line))
+  (let* ((p1-check (point-line-orientation (:p1 line-1) line-2))
+	 (p2-check (point-line-orientation (:p2 line-1) line-2)))
+    (cond ((or (and (< p1-check 0) (< p2-check 0)) (and (> p1-check 0) (> p2-check 0)))
+	   nil)
+	  (:default t))))
+
+(defmethod line-collision?
+    ((line-1 line) (line-2 line))
+    (and
+     (line-shadow? line-1 line-2)
+     (line-shadow? line-2 line-1)))
+
+(defmethod line-intersection-point
+    ((line-1 line) (line-2 line))
+  (let* ((l1-p1 (:p1 line-1))
+	 (l1-p2 (:p2 line-1))
+	 (l2-p1 (:p1 line-2))
+	 (l2-p2 (:p2 line-2))
+
+	 (x1 (:px l1-p1))
+	 (y1 (:py l1-p1))
+	 (x2 (:px l1-p2))
+	 (y2 (:py l1-p2))
+
+	 (x3 (:px l2-p1))
+	 (y3 (:py l2-p1))
+	 (x4 (:px l2-p2))
+	 (y4 (:py l2-p2))
+	 
+	 (px nil)
+	 (py nil)
+
+	 (p1-numerator   [[[x1 * y2 - y1 * x2] * [x3 - x4]] - [[x1 - x2] * [x3 * y4 - y3 * x4]]])
+	 (p1-denominator [[[x1 - x2] * [y3 - y4]] - [y1 - y2] * [x3 - x4]])
+
+	 (p2-numerator   [[[x1 * y2 - y1 * x2] * [y3 - y4]] - [[y1 - y2] * [x3 * y4 - y3 * x4]]])
+	 (p2-denominator [[[x1 - x2] * [y3 - y4]] - [y1 - y2] * [x3 - x4]]))
+
+    (if (not (= p1-denominator 0))
+	(setf px [p1-numerator / p1-denominator]))
+
+    (if (not (= p2-denominator 0))
+	(setf py [p2-numerator / p2-denominator]))
+
+    (point :px px :py py)))
+
+(defmethod line-midpoint
+    ((line line))
+  (let* ((point-1 (:p1 line))
+	 (point-2 (:p2 line))
+	 (x-1     (:px point-1))
+	 (y-1     (:py point-1))
+	 (x-2     (:px point-2))
+	 (y-2     (:py point-2)))
+    (point :px (/ (+ x-1 x-2) 2) :py (/ (+ y-1 y-2) 2))))
+
+(defmethod normal-of-line
+    ;;"Returns two vectors describing the normals of a Line."
+    ((line line))
+  (let* ((p1 (:p1 line))
+	 (p2 (:p2 line))
+
+	 (p1-x (:px p1))
+	 (p1-y (:py p1))
+	 (p2-x (:px p2))
+	 (p2-y (:py p2))
+
+	 (dx (- p2-x p1-x))
+	 (dy (- p2-y p1-y)))
+
+    (values (vector :vx dy :vy (* -1 dx))
+	    (vector :vx (* -1 dy) :vy dx))))
+
+;;RENDERING FNs
+
+(defun round-points-of-lines
+    (&rest lines)
+  (loop for line in lines
+     do (let* ((p1 (:p1 line))
+	       (p2 (:p2 line)))
+	  (setf (:px p1) (round (:px p1))
+		(:py p1) (round (:py p1))
+		(:px p2) (round (:px p2))
+		(:py p2) (round (:py p2))))))
+
+(defmethod pretty-normal-of-line-INGAME
+    ;;"Offsets normals for rendering purpose."
+    (camera-rect-x camera-rect-y (line line) scale) 
+  (multiple-value-bind
+	(normal-down normal-up)
+      (normal-of-line line)
+	(let* ((line-mid-point (math::line-midpoint line))
+	       (x1             (:px line-mid-point))
+	       (y1             (:py line-mid-point)))
+	  
+	  (math::normalize-vector normal-up)
+	  (math::normalize-vector normal-down)
+	  
+	  (math::scale-vector normal-up scale)
+	  (math::scale-vector normal-down scale)
+	  
+	  ;;offset normal to line-mid-point for visualization
+	  (setf (:vx normal-up)   (+ x1 (:vx normal-up))
+		(:vy normal-up)   (+ y1 (:vy normal-up)))
+	  (setf (:vx normal-down) (+ x1 (:vx normal-down))
+		(:vy normal-down) (+ y1 (:vy normal-down)))
+	  
+	  ;;construct new lines for rendering normals
+	  (let* ((n-up   (math::line :p1 (math::point :px x1 :py y1)
+				     :p2 (math::point :px (:vx normal-up) :py (:vy normal-up))))
+		 (n-down (math::line :p1 (math::point :px x1 :py y1)
+				     :p2 (math::point :px (:vx normal-down) :py (:vy normal-down))))
+		 (c-x    camera-rect-x)
+		 (c-y    camera-rect-y));;(sdl::rect-get-y camera-rect)
+	    
+	    ;;apply camera offset	
+	    (setf (:px (:p1 n-up)) (- (:px (:p1 n-up)) c-x)
+		  (:py (:p1 n-up)) (- (:py (:p1 n-up)) c-y)
+		  (:px (:p2 n-up)) (- (:px (:p2 n-up)) c-x)
+		  (:py (:p2 n-up)) (- (:py (:p2 n-up)) c-y))
+	    (setf (:px (:p1 n-down)) (- (:px (:p1 n-down)) c-x)
+		  (:py (:p1 n-down)) (- (:py (:p1 n-down)) c-y)
+		  (:px (:p2 n-down)) (- (:px (:p2 n-down)) c-x)
+		  (:py (:p2 n-down)) (- (:py (:p2 n-down)) c-y))
+	    ;;round points for rendering
+	    (round-points-of-lines n-up n-down)
+
+	    (values n-up n-down)))))
+
+(defmethod pretty-normal-of-line-GUI
+    ;;"Offsets normals for rendering purpose."
+    ((line line) scale) 
+  (multiple-value-bind
+	(normal-down normal-up)
+      (normal-of-line line)
+	(let* ((line-mid-point (math::line-midpoint line))
+	       (x1             (:px line-mid-point))
+	       (y1             (:py line-mid-point)))
+	  
+	  (math::normalize-vector normal-up)
+	  (math::normalize-vector normal-down)
+	  
+	  (math::scale-vector normal-up scale)
+	  (math::scale-vector normal-down scale)
+	  
+	  ;;offset normal to line-mid-point for visualization
+	  (setf (:vx normal-up)   (+ x1 (:vx normal-up))
+		(:vy normal-up)   (+ y1 (:vy normal-up)))
+	  (setf (:vx normal-down) (+ x1 (:vx normal-down))
+		(:vy normal-down) (+ y1 (:vy normal-down)))
+	  
+	  ;;construct new lines for rendering normals
+	  (let* ((n-up   (math::line :p1 (math::point :px x1 :py y1)
+				     :p2 (math::point :px (:vx normal-up) :py (:vy normal-up))))
+		 (n-down (math::line :p1 (math::point :px x1 :py y1)
+				     :p2 (math::point :px (:vx normal-down) :py (:vy normal-down))))
+		 
+		 );;(sdl::rect-get-y camera-rect)
+	    
+	    
+	    
+	    
+	    ;;round points for rendering
+	    (round-points-of-lines n-up n-down)
+
+	    (values n-up n-down)))))

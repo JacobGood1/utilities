@@ -345,7 +345,7 @@
 
 (defmethod detach
     ((coll vector) value)
-  (remove value coll :count 1))
+  (delete value coll :count 1))
 
 
 (declaim (inline list?))
@@ -388,3 +388,11 @@
        for val in vals
        do (vector-push-extend val v))
     v))
+
+(defun make-map-simple
+	       (&rest args)
+	     (let* ((map (make-hash-table)))
+	       (loop
+		  for (key val) in (partition args 2)
+		   do (eval `(setf (gethash ,key ,map) ',val)))
+	       map))
